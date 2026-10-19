@@ -862,6 +862,18 @@ function speechErrorMessage(error) {
   return messages[error] || `Voice recognition failed${error ? ` (${error})` : ''}. Check your microphone and try again.`;
 }
 
+async function microphonePermissionBlocked() {
+  if (!navigator.permissions?.query) return false;
+  try {
+    const permission = await navigator.permissions.query({ name: 'microphone' });
+    if (permission.state !== 'denied') return false;
+    setSystemStatus('Microphone access is blocked for this site. Open the tune/lock icon beside the address → Site settings → Microphone → Allow, then reload the page.', 'error');
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 $('#composer').addEventListener('submit', async event => {
   event.preventDefault();
   const input = $('#message-input');
@@ -924,7 +936,7 @@ $('#composer').addEventListener('submit', async event => {
   }
 });
 
-$('#mic-btn').addEventListener('click', event => {
+$('#mic-btn').addEventListener('click', async event => {
   const button = event.currentTarget;
   if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
     setSystemStatus('Voice input is not supported in this browser. Try Chrome or Edge, or type your message.', 'error');
@@ -935,6 +947,7 @@ $('#mic-btn').addEventListener('click', event => {
     recognition.stop();
     return;
   }
+  if (await microphonePermissionBlocked()) return;
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const activeRecognition = new Recognition();
   let recognitionFailed = false;
@@ -1062,7 +1075,7 @@ $('#interview-composer').addEventListener('submit', async event => {
   speakText(`${title}. ${message}`, interviewAvatar, personas.mentor);
 });
 
-$('#interview-mic').addEventListener('click', event => {
+$('#interview-mic').addEventListener('click', async event => {
   const button = event.currentTarget;
   if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
     setSystemStatus('Voice input is not supported in this browser. Try Chrome or Edge, or type your answer.', 'error');
@@ -1073,6 +1086,7 @@ $('#interview-mic').addEventListener('click', event => {
     interviewRecognition.stop();
     return;
   }
+  if (await microphonePermissionBlocked()) return;
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   const activeRecognition = new Recognition();
   let recognitionFailed = false;
