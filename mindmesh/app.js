@@ -981,8 +981,9 @@ $('#mic-btn').addEventListener('click', event => {
     const transcript = input.value.trim();
     if (transcript) {
       $('#message-input').focus();
-      setSystemStatus('Transcript ready · review it, then tap send for a reply', 'ready');
+      setSystemStatus('Voice captured · sending your words to your person…', 'ready');
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Your words are in the message box');
+      $('#composer').requestSubmit();
     } else if (!recognitionFailed) {
       setSystemStatus('No speech was captured. Check that the correct microphone is enabled in browser site settings and choose the spoken language beside the mic.', 'error');
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'No voice was captured');
@@ -992,7 +993,7 @@ $('#mic-btn').addEventListener('click', event => {
   };
   button.classList.add('listening');
   button.textContent = 'stop';
-  button.setAttribute('aria-label', 'Stop recording and send');
+  button.setAttribute('aria-label', 'Stop recording and send voice message');
   $('#message-input').placeholder = 'Listening… speak your thought';
   setAvatarState(avatarStage, 'listening', `${activePersona().shortName} is listening`, 'Speak naturally; your words will appear here');
   try {

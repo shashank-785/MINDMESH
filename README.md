@@ -44,10 +44,12 @@ conversation context to the server. Spoken input uses the
 browser's speech-recognition service: allow microphone access and use a
 supported browser such as Chrome or Edge. Choose English (India), Hindi, or
 English (US) beside the mic to match the language you are speaking. Recognized
-words appear in the message box while you speak; when recognition ends, review
-or edit the transcript and tap Send to get a reply. If no words appear, check
-which microphone is selected in the browser's site settings and try another
-recognition language. Audio recordings are not uploaded or stored by this app.
+words appear while you speak; when recognition ends or you tap Stop, the
+transcript is added to the chat and sent automatically, and the avatar speaks
+its reply when browser speech is available. Typed messages can still be
+reviewed and sent manually. If no words appear, check which microphone is
+selected in the browser's site settings and try another recognition language.
+Audio recordings are not uploaded or stored by this app.
 
 ## Run locally
 
