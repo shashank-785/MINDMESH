@@ -223,6 +223,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .composer { display: flex; align-items: center; gap: 8px; padding: 6px; border: 1px solid var(--line-dark); border-radius: 14px; background: #fbfaf7; }
 .composer input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; padding: 8px; font-size: 12px; }
 .composer input::placeholder { color: #b0aaa2; }
+.voice-language { max-width: 88px; min-height: 31px; padding: 0 4px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: #837d75; font-size: 9px; }
 .mic-btn, .send-btn { display: grid; place-items: center; flex: 0 0 auto; border-radius: 10px; }
 .mic-btn { min-height: 31px; padding: 0 9px; border: 1px solid var(--line); background: #fff; color: #837d75; font-size: 10px; }
 .mic-btn.listening { border-color: #e49a89; background: #fff0ec; color: var(--coral-dark); }
@@ -420,7 +421,7 @@ body.dark-mode .thought-card textarea::placeholder { color: #788291; }
 body.dark-mode .date-chip { background: #3b2930; color: var(--coral); }
 body.dark-mode .human-badge { background: #2f2830; color: #e3a795; }
 body.dark-mode .composer { background: #0b111a; border-color: var(--line-dark); }
-body.dark-mode .mic-btn, body.dark-mode .suggestions button { background: #172131; border-color: var(--line); color: #c4ccd6; }
+body.dark-mode .mic-btn, body.dark-mode .suggestions button, body.dark-mode .voice-language { background: #172131; border-color: var(--line); color: #c4ccd6; }
 body.dark-mode .suggestions button:hover { border-color: var(--coral); color: var(--coral); }
 body.dark-mode .avatar-stage { border-color: #3a495b; background: radial-gradient(circle at 50% 45%, #fff2 0, transparent 33%), linear-gradient(145deg, #473a41, #233f44 70%, #26354d); }
 body.dark-mode .stage-kicker, body.dark-mode .state-note { color: #d0c4bb; }

@@ -114,6 +114,15 @@ let targetRole = 'student role';
 let targetCompany = 'software';
 let interviewStartedAt;
 let interviewTimer;
+const voiceLanguageSelect = $('#voice-language');
+const savedVoiceLanguage = storage.get('mindmesh-voice-language');
+voiceLanguageSelect.value = ['en-IN', 'hi-IN', 'en-US'].includes(savedVoiceLanguage)
+  ? savedVoiceLanguage
+  : (navigator.language?.toLowerCase().startsWith('hi') ? 'hi-IN' : 'en-IN');
+voiceLanguageSelect.addEventListener('change', () => {
+  storage.set('mindmesh-voice-language', voiceLanguageSelect.value);
+  setSystemStatus(`Voice input language · ${voiceLanguageSelect.options[voiceLanguageSelect.selectedIndex].text}`, 'ready');
+});
 let conversationOwnerId = currentUserId();
 const initialConversationStore = loadConversationStore(conversationOwnerId);
 let conversationHistories = initialConversationStore.histories;
@@ -562,7 +571,7 @@ function startVoiceActivation() {
   }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   voiceActivationRecognition = new Recognition();
-  voiceActivationRecognition.lang = 'en-IN';
+  voiceActivationRecognition.lang = voiceLanguageSelect.value;
   voiceActivationRecognition.continuous = true;
   voiceActivationRecognition.interimResults = false;
   voiceActivationRecognition.onresult = event => {
@@ -845,7 +854,8 @@ function speechErrorMessage(error) {
     'not-allowed': 'Microphone access is blocked for MindMesh. In Chrome, open the site controls beside the address, set Microphone to Allow, then reload.',
     'service-not-allowed': 'Voice recognition is blocked by the browser. Check microphone and speech permissions.',
     'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
-    'no-speech': 'I didn’t catch any speech. Check your microphone and try again.',
+    'no-speech': 'No speech reached recognition. Check the browser microphone input, then choose English (India) or Hindi beside the mic and try again.',
+    'aborted': 'Voice capture was stopped before any words were recognized. Try again and speak after the listening indicator appears.',
     network: 'Voice recognition needs an internet connection. Check your connection and try again.',
     'language-not-supported': 'Voice recognition does not support the selected language on this device.',
   };
@@ -929,15 +939,37 @@ $('#mic-btn').addEventListener('click', event => {
   const activeRecognition = new Recognition();
   let recognitionFailed = false;
   recognition = activeRecognition;
-  activeRecognition.lang = navigator.language || 'en-IN';
+  activeRecognition.lang = voiceLanguageSelect.value;
   activeRecognition.interimResults = true;
+  const input = $('#message-input');
+  const startingText = input.value.trim();
   activeRecognition.onresult = eventResult => {
-    $('#message-input').value = [...eventResult.results].map(result => result[0].transcript).join('');
+    const transcript = Array.from(eventResult.results)
+      .map(result => result[0]?.transcript?.trim() || '')
+      .filter(Boolean)
+      .join(' ');
+    if (!transcript) return;
+    input.value = [startingText, transcript].filter(Boolean).join(' ');
+    setSystemStatus(`Hearing you · ${transcript}`, 'ready');
   };
   activeRecognition.onerror = eventError => {
     if (recognition !== activeRecognition) return;
     recognitionFailed = true;
     setSystemStatus(speechErrorMessage(eventError.error), 'error');
+  };
+  activeRecognition.onstart = () => {
+    if (recognition !== activeRecognition) return;
+    const language = voiceLanguageSelect.options[voiceLanguageSelect.selectedIndex].text;
+    setSystemStatus(`Microphone ready · speak now (${language})`, 'ready');
+  };
+  activeRecognition.onspeechstart = () => {
+    if (recognition === activeRecognition) setSystemStatus('Speech detected · capturing your words…', 'ready');
+  };
+  activeRecognition.onnomatch = () => {
+    if (recognition === activeRecognition) {
+      recognitionFailed = true;
+      setSystemStatus('Voice heard, but no words were recognized. Try the other language option and speak close to the microphone.', 'error');
+    }
   };
   activeRecognition.onend = () => {
     if (recognition !== activeRecognition) return;
@@ -946,13 +978,13 @@ $('#mic-btn').addEventListener('click', event => {
     button.textContent = 'voice';
     button.setAttribute('aria-label', 'Start voice message');
     $('#message-input').placeholder = 'Share what’s on your mind…';
-    const transcript = $('#message-input').value.trim();
+    const transcript = input.value.trim();
     if (transcript) {
       $('#message-input').focus();
       setSystemStatus('Transcript ready · review it, then tap send for a reply', 'ready');
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Your words are in the message box');
     } else if (!recognitionFailed) {
-      setSystemStatus('No speech was captured. Check your microphone and try again.', 'error');
+      setSystemStatus('No speech was captured. Check that the correct microphone is enabled in browser site settings and choose the spoken language beside the mic.', 'error');
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'No voice was captured');
     } else {
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Check microphone permissions and try again');
@@ -962,7 +994,7 @@ $('#mic-btn').addEventListener('click', event => {
   button.textContent = 'stop';
   button.setAttribute('aria-label', 'Stop recording and send');
   $('#message-input').placeholder = 'Listening… speak your thought';
-  setAvatarState(avatarStage, 'listening', `${activePersona().shortName} is listening`, 'Speak naturally, then stop to send');
+  setAvatarState(avatarStage, 'listening', `${activePersona().shortName} is listening`, 'Speak naturally; your words will appear here');
   try {
     activeRecognition.start();
   } catch (error) {
@@ -1044,15 +1076,28 @@ $('#interview-mic').addEventListener('click', event => {
   const activeRecognition = new Recognition();
   let recognitionFailed = false;
   interviewRecognition = activeRecognition;
-  activeRecognition.lang = navigator.language || 'en-IN';
+  activeRecognition.lang = voiceLanguageSelect.value;
   activeRecognition.interimResults = true;
   activeRecognition.onresult = eventResult => {
-    $('#interview-input').value = [...eventResult.results].map(result => result[0].transcript).join('');
+    const transcript = Array.from(eventResult.results)
+      .map(result => result[0]?.transcript?.trim() || '')
+      .filter(Boolean)
+      .join(' ');
+    if (transcript) $('#interview-input').value = transcript;
   };
   activeRecognition.onerror = eventError => {
     if (interviewRecognition !== activeRecognition) return;
     recognitionFailed = true;
     setSystemStatus(speechErrorMessage(eventError.error), 'error');
+  };
+  activeRecognition.onstart = () => {
+    const language = voiceLanguageSelect.options[voiceLanguageSelect.selectedIndex].text;
+    setSystemStatus(`Microphone ready · speak your answer (${language})`, 'ready');
+  };
+  activeRecognition.onspeechstart = () => setSystemStatus('Speech detected · capturing your answer…', 'ready');
+  activeRecognition.onnomatch = () => {
+    recognitionFailed = true;
+    setSystemStatus('Voice heard, but no words were recognized. Try another language option and speak close to the microphone.', 'error');
   };
   activeRecognition.onend = () => {
     if (interviewRecognition !== activeRecognition) return;

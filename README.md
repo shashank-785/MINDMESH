@@ -42,10 +42,12 @@ browser; signed-in history is stored in Supabase and restored when the account
 is used on another device. The app sends only the selected avatar's recent
 conversation context to the server. Spoken input uses the
 browser's speech-recognition service: allow microphone access and use a
-supported browser such as Chrome or Edge. When recognition ends, the transcript
-stays in the message box so it can be reviewed or edited; tap Send to get a
-reply. If microphone access is blocked, allow it in the browser's site settings
-and reload. Audio recordings are not uploaded or stored by this app.
+supported browser such as Chrome or Edge. Choose English (India), Hindi, or
+English (US) beside the mic to match the language you are speaking. Recognized
+words appear in the message box while you speak; when recognition ends, review
+or edit the transcript and tap Send to get a reply. If no words appear, check
+which microphone is selected in the browser's site settings and try another
+recognition language. Audio recordings are not uploaded or stored by this app.
 
 ## Run locally
 
