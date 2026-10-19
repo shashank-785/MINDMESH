@@ -20,11 +20,26 @@ unless configured. Add their server-only values under the service's
 **Environment** settings in Render. Never put private keys in `mindmesh/`,
 commit them to GitHub, or use a `VITE_*`/browser variable:
 
-- `AI_API_KEY` and optionally `AI_BASE_URL` / `AI_MODEL`
+- `AI_API_KEY` for general-purpose, context-aware assistant replies. The
+  default provider is OpenAI (`gpt-4o-mini`); optionally set `AI_BASE_URL` and
+  `AI_MODEL` for another OpenAI-compatible service. Without a key, the app
+  uses clearly labeled local demo replies; it is not a general AI model.
+  Provider usage may incur charges. When enabled, recent chat messages are
+  sent to that provider to maintain conversation context.
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
 
 For Supabase setup, see [server/README.md](server/README.md). Use a Supabase
 service-role key only as a Render secret.
+
+## Conversations and voice
+
+Each avatar has a separate chat history, saved in the current browser and kept
+separate for each guest or signed-in account. The app sends only the selected
+avatar's recent conversation context to the server. Spoken input uses the
+browser's speech-recognition service: allow microphone access and use a
+supported browser such as Chrome or Edge. Stopping a recording sends its
+transcript automatically; the reply is read aloud by the browser when speech
+playback is available. Audio recordings are not uploaded or stored by this app.
 
 ## Run locally
 

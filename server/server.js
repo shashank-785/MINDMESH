@@ -399,7 +399,11 @@ function loadDotEnv(filePath) {
 }
 
 function hasProviderConfig() {
-  return Boolean(String(process.env.AI_API_KEY || '').trim() && String(process.env.AI_BASE_URL || '').trim());
+  return Boolean(String(process.env.AI_API_KEY || '').trim() && providerBaseUrl());
+}
+
+function providerBaseUrl() {
+  return String(process.env.AI_BASE_URL || 'https://api.openai.com/v1').trim();
 }
 
 async function authenticateSupabaseRequest(req) {
@@ -623,24 +627,134 @@ function badRequest(message) {
 }
 
 function createLocalConversationReply(avatar, input) {
-  const focus = clip(input.message.replace(/\s+/g, ' '), 180);
-  const historyContext = input.history.length > 0
-    ? ` You have already shared ${input.history.length} earlier message${input.history.length === 1 ? '' : 's'}, so build on that context.`
-    : '';
-  const responses = {
-    rex: `${avatar.name} here. You mentioned “${focus}.” Let’s make it concrete: choose one small action you can complete during ${input.activity}, then decide what evidence will show you moved forward.${historyContext}`,
-    mia: `${avatar.name} here. I hear you on “${focus}.” You do not have to solve everything at once—pick the kindest useful next step for ${input.activity}, and give yourself credit for taking it.${historyContext}`,
-    arden: `${avatar.name} here. “${focus}” is a useful starting point. For ${input.activity}, separate what you know from what you are assuming, then test one assumption with a small next step.${historyContext}`,
-    zoe: `${avatar.name} here. “${focus}” has potential. Let’s turn ${input.activity} into a quick experiment: give yourself one playful attempt, then notice what surprised you.${historyContext}`,
-    elian: `${avatar.name} here. It sounds like “${focus}” is taking up some space. For ${input.activity}, pause, name the one thing within your control, and handle only that piece for now.${historyContext}`,
-    vera: `${avatar.name} here. For “${focus},” map the goal, the main constraint, and the next decision. In ${input.activity}, start with the action that reduces the most uncertainty.${historyContext}`,
-  };
+  const message = input.message.toLowerCase();
+  const previousTurns = input.history.slice(0, -1).filter((turn) => turn.role === 'user').length;
+  const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(message.trim());
+  const isThanks = /\b(thank you|thanks|appreciate it)\b/i.test(message);
+  const isCelebrating = /\b(i did it|i finished|i passed|i got the job|i got accepted|i'm proud|i am proud|it worked|that helped)\b/i.test(message);
+  const isUpset = /\b(anxious|anxiety|afraid|scared|sad|stressed|overwhelmed|lonely|upset|worried|nervous|exhausted|frustrated)\b/i.test(message);
+  const isStuck = /\b(stuck|can't|cannot|don't know|do not know|keep failing|keep making|confused|lost)\b/i.test(message);
+  const isChoosing = /\b(should i|which one|choose between|can't decide|cannot decide|decision)\b/i.test(message);
+  const topic = conversationTopic(message);
+  const turn = previousTurns % 2;
+  let reply;
+
+  if (isGreeting) {
+    const responses = {
+      rex: [`Hey. What do you want to make progress on?`, `Back again. What's the real question today?`],
+      mia: [`Hey, it's good to see you. How are you doing?`, `Hi again. What would feel good to talk about?`],
+      arden: [`Hello. What would you like to work through today?`, `Welcome back. What is on your mind?`],
+      zoe: [`Hey! What are we figuring out today?`, `You're back. What are we getting into?`],
+      elian: [`Hi. Take your time—what's on your mind?`, `Welcome back. We can start wherever you like.`],
+      vera: [`Hello. What would you like to focus on?`, `Welcome back. What should we tackle first?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `Hi. What would you like to talk about?`;
+  } else if (isThanks) {
+    const responses = {
+      rex: [`Good. What's your next move?`, `Anytime. Put the idea to work.`],
+      mia: [`You're welcome. I'm glad it helped. Want to talk through anything else?`, `Anytime. I'm here if you need me.`],
+      arden: [`You're welcome. What would you like to explore next?`, `Glad it was useful. Is there another part you'd like to work through?`],
+      zoe: [`You're welcome! Consider that one small win in the bag.`, `Anytime. What's next on the adventure?`],
+      elian: [`You're welcome. We can pause here if that feels right.`, `Anytime. Take the time you need.`],
+      vera: [`You're welcome. What is the next open question?`, `Glad it helped. We can move to the next decision whenever you're ready.`],
+    };
+    reply = responses[avatar.id]?.[turn] || `You're welcome.`;
+  } else if (isCelebrating) {
+    const responses = {
+      rex: [`That's a win. What did you do that made it happen?`, `You got it done. What's the next challenge?`],
+      mia: [`I'm so happy for you. How are you feeling now?`, `You deserve to enjoy that. What part are you proudest of?`],
+      arden: [`Well done. What did this teach you about how you work best?`, `That's meaningful progress. Which choice or skill helped most?`],
+      zoe: [`Yes! Take a moment for the victory lap. What was the best part?`, `You did the thing! What should we celebrate first?`],
+      elian: [`That sounds like a moment worth taking in. What feels different now?`, `I'm glad you got to this point. Take a breath and enjoy it.`],
+      vera: [`Good result. Which action had the biggest effect?`, `What would you repeat next time to get a similar outcome?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `That sounds like a real win.`;
+  } else if (isUpset) {
+    const responses = {
+      rex: [`I won't pretend that's easy. What's the one part you can influence right now?`, `Let's focus on what you need, not what you think you should feel. What would help in this moment?`],
+      mia: [`I'm sorry it's weighing on you. Want to tell me which part has been hardest?`, `You don't have to carry the whole thing at once. Would it help to talk, or to find one small next step?`],
+      arden: [`It may help to name the main source of the pressure. Which part feels most within reach to work on?`, `Let's separate what happened from what you're worried might happen. Which feels heavier today?`],
+      zoe: [`That sounds like a lot. Let's shrink it down: what is one thing we can make 5% easier?`, `No need to solve the whole maze right now. Which corner should we look at first?`],
+      elian: [`I'm here with you. Take your time—what feels heaviest right now?`, `There is no rush to fix anything. Would you rather be heard, or think through one gentle next step?`],
+      vera: [`Let's sort the pressure into what you can control and what you can't. Which part needs attention first?`, `What is the immediate problem, and what can safely wait until later?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `That sounds like a lot to carry. What part feels heaviest right now?`;
+  } else if (isChoosing) {
+    const responses = {
+      rex: [`What outcome are you actually trying to get? Start there, then cut the options that don't serve it.`, `Let's be direct: which option moves you closer to what you want?`],
+      mia: [`We can think it through together. What matters most to you, separate from what others expect?`, `Which choice feels kinder to the version of you who has to live with it?`],
+      arden: [`Let's clarify your criteria before comparing the options. What would make one choice meaningfully better?`, `Which trade-off are you most willing to accept, and why?`],
+      zoe: [`Let's try a quick thought experiment: if you picked each option for one week, what would you learn?`, `Which choice makes you a little more curious about what comes next?`],
+      elian: [`You don't have to decide this second. What part of the choice feels most important to sit with?`, `Which option gives you a little more room to breathe?`],
+      vera: [`Name your top two criteria, then score each option against them. Which criterion matters most?`, `What is the key constraint, and which option handles it best?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `What matters most to you in the outcome?`;
+  } else if (isStuck) {
+    const responses = {
+      rex: [`Let's stop circling and pick one move. What have you not tried yet?`, `Which part can you act on today, even if the whole problem stays unsolved?`],
+      mia: [`That loop can wear you down. What have you already tried, even if it didn't work?`, `We can take one small piece together. What feels least overwhelming to start with?`],
+      arden: [`Let's identify where the process is getting stuck. What happens right before you lose momentum?`, `What assumption could you test with a small, low-risk step?`],
+      zoe: [`Time for a tiny plot twist: what would happen if you tried the opposite of your usual approach?`, `Could we turn this into a ten-minute experiment instead of a giant task?`],
+      elian: [`Being stuck doesn't mean you're failing. What would feel like a gentle first step?`, `No rush. What part of this feels okay to look at right now?`],
+      vera: [`Let's isolate the bottleneck. What is the smallest action that would reduce uncertainty?`, `What constraint is blocking progress, and which part of it can you change?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `What is the smallest useful next step?`;
+  } else if (/\?\s*$/.test(input.message)) {
+    reply = turn === 0
+      ? `A useful place to start is with what you already know and what still feels uncertain. What have you considered so far?`
+      : `Let's work through it together. Which detail would make the answer clearer?`;
+  } else if (topic) {
+    const responses = {
+      rex: [`Quick reality check on ${topic}: what outcome are you aiming for?`, `Let's make progress on ${topic}. What is one concrete move you can make today?`],
+      mia: [`I'm with you on ${topic}. What would feel most helpful right now?`, `We can work through ${topic} together. Where should we start?`],
+      arden: [`Let's clarify what you know and what is still uncertain about ${topic}. Which piece matters most?`, `What would progress on ${topic} look like in a way you could actually notice?`],
+      zoe: [`Let's turn ${topic} into a small experiment. What could you try once, just to see what happens?`, `What's one interesting angle on ${topic} you haven't explored yet?`],
+      elian: [`No rush with ${topic}. What feels manageable to look at first?`, `We can take ${topic} one piece at a time. Which piece feels okay to start with?`],
+      vera: [`For ${topic}, name the goal, the main constraint, and the next decision. Which is still unclear?`, `What is the next decision about ${topic} that would reduce the most uncertainty?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `What would make this feel more manageable?`;
+  } else {
+    const responses = {
+      rex: [`Let's get to the heart of it. What result are you trying to reach?`, `What is one useful move you can make next?`],
+      mia: [`I'm here with you. What would be most helpful from me right now?`, `We can take this at your pace. Where would you like to start?`],
+      arden: [`Let's clarify the situation before jumping to a solution. What feels most important to understand?`, `What do you know for sure, and what is still an open question?`],
+      zoe: [`Let's find a fresh angle. What is one small thing you could try just to learn more?`, `If this were an experiment, what would you test first?`],
+      elian: [`There is no rush to solve it all. What feels okay to explore first?`, `I'm listening. What would you like to make a little more space for?`],
+      vera: [`Let's define the goal and the biggest constraint. Which one should we tackle first?`, `What is the next decision, and what information would make it easier?`],
+    };
+    reply = responses[avatar.id]?.[turn] || `What would you like to start with?`;
+  }
+
   return {
-    reply: responses[avatar.id],
+    reply,
     languageFeedback: createLanguageFeedback(input.message),
     mode: 'local-demo',
     notice: 'Local demo intelligence is active.',
   };
+}
+
+function conversationTopic(message) {
+  const topics = [
+    [/\bexams?\b/, 'your exams'],
+    [/\binterviews?\b/, 'the interview'],
+    [/\bprojects?\b/, 'your project'],
+    [/\bpresentations?\b/, 'the presentation'],
+    [/\b(?:job|career|work)\b/, 'work'],
+    [/\b(?:family|parents|siblings)\b/, 'your family'],
+    [/\b(?:friend|friends|friendship)\b/, 'the friendship'],
+    [/\b(?:relationship|partner|breakup)\b/, 'the relationship'],
+    [/\b(?:money|finances|budget)\b/, 'money'],
+    [/\b(?:health|sleep|energy)\b/, 'your wellbeing'],
+    [/\b(?:coding|programming|software)\b/, 'the coding problem'],
+    [/\b(?:bug|error|code)\b/, 'the coding problem'],
+    [/\b(?:resume|cv|cover letter)\b/, 'your application'],
+    [/\b(?:essay|writing|email|message)\b/, 'the writing'],
+    [/\b(?:assignment|homework|study|studying|exam prep)\b/, 'your studies'],
+    [/\b(?:plan|planning|schedule|organize)\b/, 'the plan'],
+    [/\b(?:deadline|due date)\b/, 'the deadline'],
+    [/\b(?:decision|choice|option)\b/, 'the decision'],
+  ];
+  return topics.find(([pattern]) => pattern.test(message))?.[1] || '';
 }
 
 function createLanguageFeedback(message) {
@@ -665,9 +779,6 @@ function createLanguageFeedback(message) {
   if (message.length > 160 && !/[.!?]$/.test(message.trim())) {
     notes.push({ category: 'structure', note: 'This is a longer thought without closing punctuation.', suggestion: 'Consider splitting it into shorter sentences.' });
   }
-  if (notes.length === 0) {
-    notes.push({ category: 'positive', note: 'Your message is clear enough for a focused response.', suggestion: 'Keep using concrete details when you want more precise coaching.' });
-  }
   return notes.slice(0, 3);
 }
 
@@ -678,7 +789,13 @@ function createConversationPrompt(avatar, input) {
       `Personality: ${avatar.personality}`,
       `Voice: ${avatar.voice}`,
       `Style: ${avatar.style}`,
-      'Respond with a supportive, concise answer grounded in the user activity.',
+      'You are a capable general-purpose assistant as well as a supportive conversation partner. Help with questions, explanations, writing, planning, brainstorming, and practical tasks; do not limit yourself to emotional coaching.',
+      'Talk naturally and respond to what this person actually said and how they seem to feel.',
+      'Use the conversation history to continue the thread; do not repeat your earlier wording or simply echo their message.',
+      'If they ask for help or ask a direct question, help directly and answer before asking anything back. If they are venting, listen without rushing to fix it.',
+      'Keep this avatar’s perspective and voice distinct, but never let style get in the way of a useful answer.',
+      'Do not force a question into every reply. Never claim to be human or to have feelings or experiences.',
+      'Keep the reply warm, specific, and concise; do not invent details.',
       'Return only JSON with this shape: {"reply":"string","languageFeedback":[{"category":"string","note":"string","suggestion":"string"}]}.',
       'Language feedback should be kind, specific, and limited to three notes.',
     ].join(' '),
@@ -704,7 +821,8 @@ async function tryProviderReply(prompt, fallback) {
     const result = await requestProvider(prompt, 500);
     return normalizeConversationProviderResult(result, fallback);
   } catch (error) {
-    return { ...fallback, notice: 'Local demo intelligence is active because the optional AI provider was unavailable.' };
+    console.error('AI conversation provider failed.', error instanceof Error ? error.message : 'Unknown provider error.');
+    return { ...fallback, notice: 'The AI provider is unavailable. Local demo replies are active; check the server configuration and logs.' };
   }
 }
 
@@ -714,12 +832,13 @@ async function tryProviderInterview(prompt, fallback) {
     const result = await requestProvider(prompt, 450);
     return normalizeInterviewProviderResult(result, fallback);
   } catch (error) {
-    return { ...fallback, notice: 'Local demo intelligence is active because the optional AI provider was unavailable.' };
+    console.error('AI interview provider failed.', error instanceof Error ? error.message : 'Unknown provider error.');
+    return { ...fallback, notice: 'The AI provider is unavailable. Local demo feedback is active; check the server configuration and logs.' };
   }
 }
 
 async function requestProvider(prompt, maxTokens) {
-  const endpoint = providerEndpoint(process.env.AI_BASE_URL);
+  const endpoint = providerEndpoint(providerBaseUrl());
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {

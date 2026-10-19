@@ -171,6 +171,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .avatar-stage[data-state="thinking"] .state-dot { background: var(--gold); box-shadow: 0 0 0 4px #e8bd7244; }
 .avatar-stage[data-state="listening"] .portrait { animation: human-listen 1.2s ease-in-out infinite; }
 .avatar-stage[data-state="speaking"] .portrait-mouth { height: 15%; border: 0; background: #74372f; border-radius: 45%; animation: speak-mouth .45s ease-in-out infinite alternate; }
+.avatar-stage[data-state="speaking"] .stage-glow { animation: speaking-glow .7s ease-in-out infinite alternate; }
 .avatar-stage[data-state="thinking"] .portrait { animation: human-think 2.1s ease-in-out infinite; }
 .avatar-stage[data-state="thinking"] .portrait-head { transform: translateX(-50%) rotate(-3deg); }
 .avatar-stage[data-state="listening"] .portrait-head { transform: translateX(-50%) rotate(2deg); }
@@ -258,6 +259,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 @keyframes eye-blink { 0%, 45%, 48%, 100% { transform: scaleY(1); } 46%, 47% { transform: scaleY(.12); } }
 @keyframes gesture { 0%, 100% { transform: rotate(-14deg) translateY(0); } 50% { transform: rotate(8deg) translateY(-8px); } }
 @keyframes speak-mouth { from { transform: scaleY(.65); } to { transform: scaleY(1.25); } }
+@keyframes speaking-glow { from { opacity: .48; transform: scale(.94); } to { opacity: .92; transform: scale(1.08); } }
 @keyframes typing { 0%, 100% { opacity: .35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -272,7 +274,10 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .portrait--large .portrait-image { object-position: center 30%; }
 .portrait--mini .portrait-image, .portrait--tiny .portrait-image, .portrait--council .portrait-image { object-position: center 28%; }
 .avatar-stage[data-state="listening"] .portrait-image { transform: scale(1.025) rotate(1deg); filter: saturate(1.08) contrast(1.03); }
-.avatar-stage[data-state="speaking"] .portrait-image { transform: scale(1.018); }
+.avatar-stage[data-state="speaking"] .portrait-image { animation: portrait-speaking .55s ease-in-out infinite alternate; }
+@keyframes portrait-speaking { from { transform: scale(1.008) translateY(1px); } to { transform: scale(1.026) translateY(-2px); } }
+.composer input:disabled { opacity: .65; }
+.composer .send-btn:disabled { cursor: wait; opacity: .55; }
 .dark-toggle { transition: background .2s ease, color .2s ease, border-color .2s ease, transform .2s ease; }
 .dark-toggle:hover { transform: rotate(-12deg); }
 

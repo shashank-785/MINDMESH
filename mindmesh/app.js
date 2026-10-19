@@ -46,7 +46,6 @@ const appState = {
   authMode: 'signin',
   authUser: null,
   authToken: storage.get('mindmesh-auth-token'),
-  conversationId: null,
   avatarPersonalizations: {},
   voiceActivation: false,
   voiceMode: 'push-to-talk',
@@ -111,7 +110,13 @@ let targetRole = 'student role';
 let targetCompany = 'software';
 let interviewStartedAt;
 let interviewTimer;
-const conversationHistory = [];
+let conversationOwnerId = currentUserId();
+const initialConversationStore = loadConversationStore(conversationOwnerId);
+let conversationHistories = initialConversationStore.histories;
+let conversationIds = initialConversationStore.conversationIds;
+const pendingConversationCounts = new Map();
+let activeUtterance = null;
+let activeSpeechStage = null;
 const defaultMissions = [
   { id: 'name-the-signal', title: 'Name the signal', description: 'Write one honest sentence about what is taking up space today.', tag: 'Reflect', points: 10 },
   { id: 'ask-a-better-question', title: 'Ask a better question', description: 'Send one follow-up in SpeakSpace that starts with why, how, or what if.', tag: 'Connect', points: 15 },
@@ -149,6 +154,43 @@ function localGuestId() {
 }
 
 function currentUserId() { return appState.authUser?.id || localGuestId(); }
+
+function loadConversationStore(ownerId) {
+  try {
+    const saved = JSON.parse(storage.get(`mindmesh-conversations-v1:${ownerId}`, '{}') || '{}');
+    const histories = {};
+    const conversationIds = {};
+    Object.keys(personas).forEach(personaId => {
+      const turns = saved.histories?.[personaId];
+      histories[personaId] = Array.isArray(turns)
+        ? turns.filter(turn => turn && ['user', 'assistant'].includes(turn.role) && typeof turn.content === 'string')
+          .slice(-60).map(turn => ({ role: turn.role, content: turn.content.slice(0, 4000), time: typeof turn.time === 'string' ? turn.time : '' }))
+        : [];
+      const id = saved.conversationIds?.[personaId];
+      if (typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)) conversationIds[personaId] = id;
+    });
+    return { histories, conversationIds };
+  } catch (error) {
+    return { histories: {}, conversationIds: {} };
+  }
+}
+
+function saveConversationStore(ownerId = conversationOwnerId, histories = conversationHistories, ids = conversationIds) {
+  storage.set(`mindmesh-conversations-v1:${ownerId}`, JSON.stringify({
+    histories,
+    conversationIds: ids,
+  }));
+}
+
+function switchConversationOwner() {
+  const nextOwnerId = currentUserId();
+  if (nextOwnerId === conversationOwnerId) return;
+  conversationOwnerId = nextOwnerId;
+  const store = loadConversationStore(conversationOwnerId);
+  conversationHistories = store.histories;
+  conversationIds = store.conversationIds;
+  renderConversation();
+}
 
 function updateProfileSurface() {
   const user = appState.authUser;
@@ -364,8 +406,6 @@ function updatePersonaCopy(persona) {
   $('#active-persona-activity').textContent = persona.activity;
   $('#voice-chip').textContent = `Voice · ${typeof persona.voice === 'string' ? persona.voice : persona.voice?.label || 'natural'}`;
   $('#conversation-persona-label').textContent = persona.shortName.toUpperCase();
-  $('#intro-meta').firstChild.textContent = `${persona.shortName.toUpperCase()} `;
-  $('#intro-message').textContent = persona.intro;
   $('#message-input').setAttribute('aria-label', `Message ${persona.name}`);
   $('#typing-label').textContent = `${persona.shortName} is thinking…`;
   $('#speak-persona').textContent = `Hear ${persona.shortName}'s introduction ↗`;
@@ -373,8 +413,25 @@ function updatePersonaCopy(persona) {
 
 function setActivePersona(personaId, { manual = false } = {}) {
   const id = personaFromId(personaId);
+  if (id !== activePersonaId) {
+    if (recognition) {
+      const activeRecognition = recognition;
+      recognition = null;
+      activeRecognition.abort();
+      const button = $('#mic-btn');
+      button.classList.remove('listening');
+      button.textContent = 'voice';
+      button.setAttribute('aria-label', 'Start voice message');
+      $('#message-input').placeholder = 'Share what’s on your mind…';
+    }
+    if ('speechSynthesis' in window) {
+      if (activeSpeechStage) setAvatarState(activeSpeechStage, 'idle', `${activePersona().shortName} is ready`, 'Your turn — keep the thought moving');
+      activeUtterance = null;
+      activeSpeechStage = null;
+      window.speechSynthesis.cancel();
+    }
+  }
   activePersonaId = id;
-  appState.conversationId = null;
   const persona = activePersona();
   if (manual) $('#auto-match').checked = false;
   $$('.persona-option').forEach(option => {
@@ -384,8 +441,8 @@ function setActivePersona(personaId, { manual = false } = {}) {
   });
   paintPortrait($('#main-portrait'), id);
   paintPortrait($('#active-portrait'), id);
-  $$('.message-avatar').forEach(avatar => paintPortrait(avatar, id));
   updatePersonaCopy(persona);
+  renderConversation();
   setAvatarState(avatarStage, 'idle', `${persona.shortName} is ready`, 'Choose a thought, then speak or type');
 }
 
@@ -414,19 +471,52 @@ $$('.persona-option').forEach(option => option.addEventListener('click', () => s
 function speakText(text, stage = avatarStage, persona = activePersona()) {
   if (!('speechSynthesis' in window)) {
     setAvatarState(stage, 'idle', `${persona.shortName} is ready`, 'Your turn — keep the thought moving');
+    setSystemStatus('This browser cannot play spoken replies. The response is available in the chat.', 'demo');
     return;
   }
+  if (activeSpeechStage) setAvatarState(activeSpeechStage, 'idle', `${activePersona().shortName} is ready`, 'Your turn — keep the thought moving');
   window.speechSynthesis.cancel();
   const voice = new SpeechSynthesisUtterance(text);
-  voice.lang = 'en-IN';
-  voice.rate = persona.role === 'Entertainer' ? 1.04 : .96;
-  voice.pitch = persona.role === 'Calm Companion' ? .92 : 1.02;
+  activeUtterance = voice;
+  activeSpeechStage = stage;
+  const voiceStyle = {
+    rex: { rate: 1.02, pitch: 0.9 },
+    mia: { rate: 1, pitch: 1.12 },
+    arden: { rate: 0.94, pitch: 0.96 },
+    zoe: { rate: 1.08, pitch: 1.17 },
+    elian: { rate: 0.88, pitch: 0.82 },
+    vera: { rate: 0.98, pitch: 1.02 },
+  }[persona.id] || { rate: 0.96, pitch: 1 };
+  voice.lang = navigator.language || 'en-IN';
+  voice.rate = voiceStyle.rate;
+  voice.pitch = voiceStyle.pitch;
   const availableVoices = window.speechSynthesis.getVoices();
   const preferredVoice = availableVoices.find(item => /en[-_]IN/i.test(item.lang)) || availableVoices.find(item => /^en/i.test(item.lang));
   if (preferredVoice) voice.voice = preferredVoice;
-  voice.onstart = () => setAvatarState(stage, 'speaking', `${persona.shortName} is speaking`, 'Listen for the way the sentence is shaped');
-  voice.onend = () => setAvatarState(stage, 'idle', `${persona.shortName} is ready`, 'Your turn — keep the thought moving');
-  window.speechSynthesis.speak(voice);
+  voice.onstart = () => {
+    if (activeUtterance === voice) setAvatarState(stage, 'speaking', `${persona.shortName} is speaking`, 'Listen to the reply');
+  };
+  voice.onend = () => {
+    if (activeUtterance !== voice) return;
+    activeUtterance = null;
+    activeSpeechStage = null;
+    setAvatarState(stage, 'idle', `${persona.shortName} is ready`, 'Your turn — keep the thought moving');
+  };
+  voice.onerror = () => {
+    if (activeUtterance !== voice) return;
+    activeUtterance = null;
+    activeSpeechStage = null;
+    setAvatarState(stage, 'idle', `${persona.shortName} is ready`, 'The reply is available in the chat');
+    setSystemStatus('Spoken reply could not play. The response is available in the chat.', 'demo');
+  };
+  try {
+    window.speechSynthesis.speak(voice);
+  } catch (error) {
+    activeUtterance = null;
+    activeSpeechStage = null;
+    setAvatarState(stage, 'idle', `${persona.shortName} is ready`, 'The reply is available in the chat');
+    setSystemStatus('Spoken reply could not play. The response is available in the chat.', 'demo');
+  }
 }
 
 function normalizeVoiceName(value) { return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
@@ -499,16 +589,19 @@ function startVoiceActivation() {
   }
 }
 
-function nowLabel() { return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+function nowLabel(value) {
+  const date = value ? new Date(value) : new Date();
+  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 
-function addMessage(kind, text, speaker = activePersona()) {
+function addMessage(kind, text, speaker = activePersona(), time = '') {
   const conversation = $('#conversation');
   const message = document.createElement('div');
   message.className = `message ${kind}`;
   const body = document.createElement('div');
   const meta = document.createElement('span');
   meta.className = 'message-meta';
-  meta.innerHTML = `${kind === 'user' ? 'YOU' : escapeHtml(speaker.shortName).toUpperCase()} <time>${nowLabel()}</time>`;
+  meta.innerHTML = `${kind === 'user' ? 'YOU' : escapeHtml(speaker.shortName).toUpperCase()} <time>${escapeHtml(nowLabel(time))}</time>`;
   const paragraph = document.createElement('p');
   paragraph.textContent = text;
   body.append(meta, paragraph);
@@ -525,6 +618,32 @@ function addMessage(kind, text, speaker = activePersona()) {
   }
   conversation.appendChild(message);
   conversation.scrollTop = conversation.scrollHeight;
+}
+
+function renderConversation() {
+  const conversation = $('#conversation');
+  const typing = $('#typing');
+  if (!conversation || !typing) return;
+  conversation.replaceChildren();
+  const history = conversationHistories[activePersonaId] || [];
+  if (history.length) {
+    history.forEach(turn => addMessage(turn.role === 'user' ? 'user' : 'ai', turn.content, activePersona(), turn.time));
+  } else {
+    addMessage('ai', activePersona().intro, activePersona());
+  }
+  conversation.appendChild(typing);
+  const waiting = Boolean(pendingConversationCounts.get(`${conversationOwnerId}:${activePersonaId}`));
+  typing.hidden = !waiting;
+  $('#message-input').disabled = waiting;
+  $('#mic-btn').disabled = waiting;
+  $('#composer button[type="submit"]').disabled = waiting;
+}
+
+function saveConversationTurn(ownerId, histories, ids, personaId, role, content) {
+  const history = histories[personaId] || (histories[personaId] = []);
+  history.push({ role, content, time: new Date().toISOString() });
+  if (history.length > 60) history.splice(0, history.length - 60);
+  saveConversationStore(ownerId, histories, ids);
 }
 
 function findLanguageNotes(text) {
@@ -544,11 +663,10 @@ function findLanguageNotes(text) {
 
 function addLanguageFeedback(text) {
   const notes = findLanguageNotes(text);
+  if (!notes.length) return;
   const feedback = document.createElement('div');
   feedback.className = 'language-feedback';
-  feedback.innerHTML = notes.length
-    ? `<strong>Language lens · ${notes.length} gentle note${notes.length > 1 ? 's' : ''}</strong>${notes.map(note => `<span class="correction">“${escapeHtml(note.original)}” → “${escapeHtml(note.correction)}” · ${escapeHtml(note.reason)}</span>`).join('')}`
-    : '<strong>Language lens · no correction flags</strong><span class="correction">Your thought came through clearly. Keep speaking naturally — confidence matters more than perfection.</span>';
+  feedback.innerHTML = `<strong>Language lens · ${notes.length} gentle note${notes.length > 1 ? 's' : ''}</strong>${notes.map(note => `<span class="correction">“${escapeHtml(note.original)}” → “${escapeHtml(note.correction)}” · ${escapeHtml(note.reason)}</span>`).join('')}`;
   $('#conversation').appendChild(feedback);
   $('#conversation').scrollTop = $('#conversation').scrollHeight;
 }
@@ -585,10 +703,34 @@ function responseText(data, fields = ['reply', 'message', 'text', 'content']) {
   return '';
 }
 
-function localReply(text) {
-  const persona = activePersona();
-  if (/why|how|question/i.test(text)) return persona.replies[0];
-  return persona.replies[Math.floor(Math.random() * persona.replies.length)];
+function localReply(text, persona, history) {
+  const lower = text.toLowerCase();
+  const turn = history.slice(0, -1).filter(item => item.role === 'user').length % 2;
+  if (/\b(thank you|thanks|appreciate it)\b/.test(lower)) return turn ? 'Anytime. We can leave it there, or keep going if something else is on your mind.' : 'You’re welcome. I’m glad it helped. What would feel useful from here?';
+  if (/\b(anxious|afraid|scared|sad|stressed|overwhelmed|lonely|upset|worried|nervous|exhausted|frustrated)\b/.test(lower)) {
+    return turn ? 'I hear how much this is weighing on you. Would it help more to talk it through, or find one small next step?' : 'That sounds like a lot to carry. What part feels heaviest right now?';
+  }
+  if (/\b(i did it|i finished|i passed|i got the job|i got accepted|i am proud|it worked|that helped)\b/.test(lower)) return turn ? 'You earned that moment. What would you like to take forward from it?' : 'That sounds like a real win. What do you think made the difference?';
+  if (/\b(should i|which one|choose between|can.t decide|cannot decide|decision)\b/.test(lower)) return turn ? 'We can compare the trade-offs. What would you most regret giving up?' : 'Let’s make the choice smaller: what matters most to you in the outcome?';
+  if (/\b(stuck|can.t|cannot|don.t know|do not know|keep failing|confused|lost)\b/.test(lower)) return turn ? 'Let’s try a different angle. Which part is actually within your control today?' : 'Getting caught in the same loop can be tiring. What have you already tried, even if it didn’t work?';
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(lower.trim())) return turn ? 'Hi again. Where would you like to pick things up?' : 'Hey, good to see you. What’s on your mind today?';
+  if (text.trim().endsWith('?')) return turn ? 'Let’s work through it together. Which detail would make the answer clearer?' : 'A useful place to start is with what you already know and what still feels uncertain. What have you considered so far?';
+  if (turn) return 'We don’t have to solve it all at once. Where would you like to start?';
+  return persona.role === 'Calm Companion'
+    ? 'There is no rush to have it all figured out. What feels manageable to look at first?'
+    : 'I’m listening. What feels most important for me to understand about this?';
+}
+
+function speechErrorMessage(error) {
+  const messages = {
+    'not-allowed': 'Allow microphone access for this site in your browser, then try again.',
+    'service-not-allowed': 'Voice recognition is blocked by the browser. Check microphone and speech permissions.',
+    'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
+    'no-speech': 'I didn’t catch any speech. Check your microphone and try again.',
+    network: 'Voice recognition needs an internet connection. Check your connection and try again.',
+    'language-not-supported': 'Voice recognition does not support the selected language on this device.',
+  };
+  return messages[error] || `Voice recognition failed${error ? ` (${error})` : ''}. Check your microphone and try again.`;
 }
 
 $('#composer').addEventListener('submit', async event => {
@@ -596,33 +738,117 @@ $('#composer').addEventListener('submit', async event => {
   const input = $('#message-input');
   const text = input.value.trim();
   if (!text) { input.focus(); return; }
+  const personaId = activePersonaId;
   const persona = activePersona();
+  const requestOwnerId = conversationOwnerId;
+  const histories = conversationHistories;
+  const ids = conversationIds;
+  const history = histories[personaId] || (histories[personaId] = []);
+  const requestKey = `${requestOwnerId}:${personaId}`;
   addMessage('user', text);
   addLanguageFeedback(text);
   input.value = '';
+  saveConversationTurn(requestOwnerId, histories, ids, personaId, 'user', text);
+  pendingConversationCounts.set(requestKey, (pendingConversationCounts.get(requestKey) || 0) + 1);
+  input.disabled = true;
+  $('#mic-btn').disabled = true;
+  $('#composer button[type="submit"]').disabled = true;
   setAvatarState(avatarStage, 'thinking', `${persona.shortName} is thinking`, 'Finding the thread underneath your words');
   $('#typing').hidden = false;
-   conversationHistory.push({ role: 'user', content: text });
-    const result = await apiRequest('/api/conversations/reply', jsonOptions({ message: text, avatarId: persona.id, userId: personalizationUserId(), activity: 'daily conversation', conversationId: appState.conversationId || undefined, history: conversationHistory.slice(-20) }));
-    if (result?.conversationId) appState.conversationId = result.conversationId;
-   if (!result || result.mode === 'local-demo') setSystemStatus(result?.notice || 'Local demo intelligence · no live AI provider is active', 'demo');
-   else setSystemStatus('Live conversation provider connected', 'ready');
-   const reply = responseText(result) || localReply(text);
-  $('#typing').hidden = true;
-   addMessage('ai', reply, persona);
-   conversationHistory.push({ role: 'assistant', content: reply });
-  speakText(reply, avatarStage, persona);
+  try {
+    const result = await apiRequest('/api/conversations/reply', {
+      ...jsonOptions({
+        message: text,
+        avatarId: persona.id,
+        userId: requestOwnerId,
+        activity: 'daily conversation',
+        conversationId: ids[personaId],
+        history: history.slice(-20).map(({ role, content }) => ({ role, content })),
+      }),
+      timeout: 18000,
+    });
+    if (result?.conversationId) ids[personaId] = result.conversationId;
+    const reply = responseText(result) || localReply(text, persona, history);
+    saveConversationTurn(requestOwnerId, histories, ids, personaId, 'assistant', reply);
+    if (conversationOwnerId !== requestOwnerId || activePersonaId !== personaId) return;
+    if (!result || result.mode === 'local-demo') setSystemStatus(result?.notice || 'Local demo intelligence · no live AI provider is active', 'demo');
+    else setSystemStatus('Live conversation provider connected', 'ready');
+    addMessage('ai', reply, persona);
+    speakText(reply, avatarStage, persona);
+  } finally {
+    const remaining = (pendingConversationCounts.get(requestKey) || 1) - 1;
+    if (remaining > 0) pendingConversationCounts.set(requestKey, remaining);
+    else pendingConversationCounts.delete(requestKey);
+    if (conversationOwnerId === requestOwnerId && activePersonaId === personaId) {
+      $('#typing').hidden = !pendingConversationCounts.get(requestKey);
+      input.disabled = Boolean(pendingConversationCounts.get(requestKey));
+      $('#mic-btn').disabled = Boolean(pendingConversationCounts.get(requestKey));
+      $('#composer button[type="submit"]').disabled = Boolean(pendingConversationCounts.get(requestKey));
+      if (activeSpeechStage !== avatarStage) setAvatarState(avatarStage, 'idle', `${persona.shortName} is ready`, 'Your turn — keep the thought moving');
+    }
+  }
 });
 
 $('#mic-btn').addEventListener('click', event => {
   const button = event.currentTarget;
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) { $('#message-input').placeholder = 'Voice input is not supported in this browser'; return; }
-  if (recognition) { recognition.stop(); recognition = null; button.classList.remove('listening'); button.textContent = 'voice'; setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Your turn — keep the thought moving'); return; }
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    setSystemStatus('Voice input is not supported in this browser. Try Chrome or Edge, or type your message.', 'error');
+    return;
+  }
+  if (recognition) {
+    setSystemStatus('Finishing your recording…', 'ready');
+    recognition.stop();
+    return;
+  }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new Recognition(); recognition.lang = 'en-IN'; recognition.interimResults = true;
-  recognition.onresult = eventResult => { $('#message-input').value = [...eventResult.results].map(result => result[0].transcript).join(''); };
-  recognition.onend = () => { recognition = null; button.classList.remove('listening'); button.textContent = 'voice'; $('#message-input').placeholder = 'Share what’s on your mind…'; setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Voice captured — press send when you are ready'); };
-  button.classList.add('listening'); button.textContent = 'stop'; button.setAttribute('aria-label', 'Stop microphone'); $('#message-input').placeholder = 'Listening… speak your thought'; setAvatarState(avatarStage, 'listening', `${activePersona().shortName} is listening`, 'Say it naturally — pauses are okay'); recognition.start();
+  const activeRecognition = new Recognition();
+  let recognitionFailed = false;
+  recognition = activeRecognition;
+  activeRecognition.lang = navigator.language || 'en-IN';
+  activeRecognition.interimResults = true;
+  activeRecognition.onresult = eventResult => {
+    $('#message-input').value = [...eventResult.results].map(result => result[0].transcript).join('');
+  };
+  activeRecognition.onerror = eventError => {
+    if (recognition !== activeRecognition) return;
+    recognitionFailed = true;
+    setSystemStatus(speechErrorMessage(eventError.error), 'error');
+  };
+  activeRecognition.onend = () => {
+    if (recognition !== activeRecognition) return;
+    recognition = null;
+    button.classList.remove('listening');
+    button.textContent = 'voice';
+    button.setAttribute('aria-label', 'Start voice message');
+    $('#message-input').placeholder = 'Share what’s on your mind…';
+    const transcript = $('#message-input').value.trim();
+    if (!recognitionFailed && transcript) {
+      setAvatarState(avatarStage, 'thinking', `${activePersona().shortName} is thinking`, 'Sending your voice message');
+      setSystemStatus('Voice captured · getting a response…', 'ready');
+      $('#composer').requestSubmit();
+    } else if (!recognitionFailed) {
+      setSystemStatus('No speech was captured. Check your microphone and try again.', 'error');
+      setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'No voice was captured');
+    } else {
+      setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Check microphone permissions and try again');
+    }
+  };
+  button.classList.add('listening');
+  button.textContent = 'stop';
+  button.setAttribute('aria-label', 'Stop recording and send');
+  $('#message-input').placeholder = 'Listening… speak your thought';
+  setAvatarState(avatarStage, 'listening', `${activePersona().shortName} is listening`, 'Speak naturally, then stop to send');
+  try {
+    activeRecognition.start();
+  } catch (error) {
+    recognition = null;
+    button.classList.remove('listening');
+    button.textContent = 'voice';
+    button.setAttribute('aria-label', 'Start voice message');
+    $('#message-input').placeholder = 'Share what’s on your mind…';
+    setSystemStatus(`Could not start voice input: ${error instanceof Error ? error.message : 'check microphone permissions.'}`, 'error');
+    setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Check microphone permissions and try again');
+  }
 });
 
 $$('.suggestions button').forEach(button => button.addEventListener('click', () => { $('#message-input').value = button.textContent; $('#message-input').focus(); }));
@@ -665,7 +891,7 @@ $('#interview-composer').addEventListener('submit', async event => {
   if (!answer) { $('#interview-input').focus(); return; }
    setAvatarState(interviewAvatar, 'thinking', `${personas.mentor.name} is thinking`, 'Looking for clarity, confidence, and a strong structure');
   $('#interview-feedback').innerHTML = '<span class="feedback-spin">●</span><div><strong>Listening for your strongest signal…</strong><p>One moment while your coach shapes a useful reflection.</p></div>';
-   const result = await apiRequest('/api/interviews/coach', jsonOptions({ answer, scenario: activeScenario, role: targetRole, companyType: targetCompany }));
+   const result = await apiRequest('/api/interviews/coach', { ...jsonOptions({ answer, scenario: activeScenario, role: targetRole, companyType: targetCompany }), timeout: 18000 });
    if (!result || result.mode === 'local-demo') setSystemStatus(result?.notice || 'Local demo intelligence · no live AI provider is active', 'demo');
    else setSystemStatus('Live interview provider connected', 'ready');
   const fallback = localInterviewFeedback(answer);
@@ -674,18 +900,66 @@ $('#interview-composer').addEventListener('submit', async event => {
   const message = responseText(result, ['feedback', 'advice', 'message', 'text']) || fallback.message;
   $('#interview-score').textContent = `${Math.min(100, score)}%`;
   $('#interview-feedback').innerHTML = `<span>●</span><div><strong>${escapeHtml(title)}</strong><p>${escapeHtml(message)}</p></div>`;
-    setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Pick another scenario or try the answer again');
+  setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Pick another scenario or try the answer again');
+  speakText(`${title}. ${message}`, interviewAvatar, personas.mentor);
 });
 
 $('#interview-mic').addEventListener('click', event => {
   const button = event.currentTarget;
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) { $('#interview-input').placeholder = 'Voice input is not supported in this browser'; return; }
-    if (interviewRecognition) { interviewRecognition.stop(); interviewRecognition = null; button.classList.remove('listening'); button.textContent = 'Speak answer'; setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Voice captured — submit when ready'); return; }
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    setSystemStatus('Voice input is not supported in this browser. Try Chrome or Edge, or type your answer.', 'error');
+    return;
+  }
+  if (interviewRecognition) {
+    setSystemStatus('Finishing your answer…', 'ready');
+    interviewRecognition.stop();
+    return;
+  }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  interviewRecognition = new Recognition(); interviewRecognition.lang = 'en-IN'; interviewRecognition.interimResults = true;
-  interviewRecognition.onresult = eventResult => { $('#interview-input').value = [...eventResult.results].map(result => result[0].transcript).join(''); };
-    interviewRecognition.onend = () => { interviewRecognition = null; button.classList.remove('listening'); button.textContent = 'Speak answer'; setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Voice captured — submit when ready'); };
-   button.classList.add('listening'); button.textContent = 'Stop listening'; setAvatarState(interviewAvatar, 'listening', `${personas.mentor.name} is listening`, 'Speak naturally — structure comes after confidence'); interviewRecognition.start();
+  const activeRecognition = new Recognition();
+  let recognitionFailed = false;
+  interviewRecognition = activeRecognition;
+  activeRecognition.lang = navigator.language || 'en-IN';
+  activeRecognition.interimResults = true;
+  activeRecognition.onresult = eventResult => {
+    $('#interview-input').value = [...eventResult.results].map(result => result[0].transcript).join('');
+  };
+  activeRecognition.onerror = eventError => {
+    if (interviewRecognition !== activeRecognition) return;
+    recognitionFailed = true;
+    setSystemStatus(speechErrorMessage(eventError.error), 'error');
+  };
+  activeRecognition.onend = () => {
+    if (interviewRecognition !== activeRecognition) return;
+    interviewRecognition = null;
+    button.classList.remove('listening');
+    button.textContent = 'Speak answer';
+    button.setAttribute('aria-label', 'Record interview answer');
+    const answer = $('#interview-input').value.trim();
+    if (!recognitionFailed && answer) {
+      setSystemStatus('Voice captured · getting your coach’s feedback…', 'ready');
+      $('#interview-composer').requestSubmit();
+    } else if (!recognitionFailed) {
+      setSystemStatus('No speech was captured. Check your microphone and try again.', 'error');
+      setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'No voice was captured');
+    } else {
+      setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Check microphone permissions and try again');
+    }
+  };
+  button.classList.add('listening');
+  button.textContent = 'Stop listening';
+  button.setAttribute('aria-label', 'Stop recording and get feedback');
+  setAvatarState(interviewAvatar, 'listening', `${personas.mentor.name} is listening`, 'Speak naturally, then stop to get feedback');
+  try {
+    activeRecognition.start();
+  } catch (error) {
+    interviewRecognition = null;
+    button.classList.remove('listening');
+    button.textContent = 'Speak answer';
+    button.setAttribute('aria-label', 'Record interview answer');
+    setSystemStatus(`Could not start voice input: ${error instanceof Error ? error.message : 'check microphone permissions.'}`, 'error');
+    setAvatarState(interviewAvatar, 'idle', `${personas.mentor.name} is ready`, 'Check microphone permissions and try again');
+  }
 });
 
 function startInterviewTimer() {
@@ -801,6 +1075,7 @@ async function loadAuthenticatedUser() {
   const result = await apiRequest('/api/auth/me', { method: 'GET' });
   if (result?.user) {
     appState.authUser = result.user;
+    switchConversationOwner();
     updateProfileSurface();
     setSystemStatus('Signed in · private profile connected', 'ready');
     loadAuthenticatedPreferences();
@@ -813,6 +1088,7 @@ async function loadAuthenticatedUser() {
       const response = await fetch(`${config.url}/auth/v1/user`, { headers: { apikey: config.anonKey, Authorization: `Bearer ${appState.authToken}` } });
       if (response.ok) {
         appState.authUser = await response.json();
+        switchConversationOwner();
         updateProfileSurface();
         setSystemStatus('Signed in · Supabase session active', 'ready');
         loadAuthenticatedPreferences();
@@ -822,7 +1098,9 @@ async function loadAuthenticatedUser() {
     } catch (error) { /* Keep the guest surface available when Supabase is unreachable. */ }
   }
   appState.authToken = null;
+  appState.authUser = null;
   storage.remove('mindmesh-auth-token');
+  switchConversationOwner();
   updateProfileSurface();
 }
 
@@ -855,6 +1133,7 @@ $('#auth-form').addEventListener('submit', async event => {
     appState.authToken = session.access_token;
     appState.authUser = session.user || null;
     storage.set('mindmesh-auth-token', session.access_token);
+    switchConversationOwner();
     updateProfileSurface();
     setAuthStatus('You are signed in. Your private room is ready.', 'success');
     setSystemStatus('Signed in · Supabase session active', 'ready');
@@ -872,6 +1151,7 @@ function signOutToGuest() {
   appState.authToken = null;
   appState.authUser = null;
   storage.remove('mindmesh-auth-token');
+  switchConversationOwner();
   updateProfileSurface();
   setAuthStatus('You are using guest mode. Progress stays on this browser.', 'success');
   setSystemStatus('Guest mode · local progress', 'offline');
