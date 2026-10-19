@@ -46,6 +46,10 @@ const appState = {
   authMode: 'signin',
   authUser: null,
   authToken: storage.get('mindmesh-auth-token'),
+  authRefreshToken: storage.get('mindmesh-auth-refresh-token'),
+  authExpiresAt: Number(storage.get('mindmesh-auth-expires-at', '0')) || 0,
+  authRefreshPromise: null,
+  supabaseServerConfigured: false,
   avatarPersonalizations: {},
   voiceActivation: false,
   voiceMode: 'push-to-talk',
@@ -646,6 +650,37 @@ function saveConversationTurn(ownerId, histories, ids, personaId, role, content)
   saveConversationStore(ownerId, histories, ids);
 }
 
+async function loadAccountConversationHistory() {
+  if (!appState.authUser || !appState.authToken || appState.offlineOnly) return;
+  const ownerId = conversationOwnerId;
+  const histories = conversationHistories;
+  const ids = conversationIds;
+  const results = await Promise.all(Object.entries(personas).map(async ([personaKey, persona]) => {
+    const data = await apiRequest(`/api/conversations/${encodeURIComponent(persona.id)}`, { method: 'GET' });
+    return { personaKey, data };
+  }));
+  if (conversationOwnerId !== ownerId || appState.authUser?.id !== ownerId) return;
+
+  let restored = false;
+  results.forEach(({ personaKey, data }) => {
+    if (!data || !Array.isArray(data.history) || !data.conversationId) return;
+    const remoteHistory = data.history
+      .filter(turn => turn && ['user', 'assistant'].includes(turn.role) && typeof turn.content === 'string')
+      .slice(-60)
+      .map(turn => ({ role: turn.role, content: turn.content.slice(0, 4000), time: turn.created_at || '' }));
+    if (remoteHistory.length) histories[personaKey] = remoteHistory;
+    ids[personaKey] = data.conversationId;
+    restored = true;
+  });
+  if (restored) {
+    saveConversationStore(ownerId, histories, ids);
+    renderConversation();
+  }
+  if (results.some(({ data }) => !data)) {
+    setSystemStatus('Signed in, but some chat history could not sync. Your current chat remains on this device.', 'offline');
+  }
+}
+
 function findLanguageNotes(text) {
   const notes = [];
   const patterns = [
@@ -676,6 +711,7 @@ async function apiRequest(path, options = {}) {
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), options.timeout || 7000);
   try {
+    await refreshAuthSession();
     const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
     if (appState.authToken && !headers.Authorization) headers.Authorization = `Bearer ${appState.authToken}`;
     const response = await fetch(path, { ...options, signal: controller.signal, headers });
@@ -850,12 +886,18 @@ $('#composer').addEventListener('submit', async event => {
       }),
       timeout: 18000,
     });
+    const accountSyncFailed = Boolean(appState.authUser && !result?.conversationId);
+    if (accountSyncFailed) {
+      setSystemStatus('Reply received, but account chat sync failed. This chat is saved only on this device until the connection is restored.', 'offline');
+    }
     if (result?.conversationId) ids[personaId] = result.conversationId;
     const reply = responseText(result) || localReply(text, persona, history);
     saveConversationTurn(requestOwnerId, histories, ids, personaId, 'assistant', reply);
     if (conversationOwnerId !== requestOwnerId || activePersonaId !== personaId) return;
-    if (!result || result.mode === 'local-demo') setSystemStatus(result?.notice || 'Local demo intelligence · no live AI provider is active', 'demo');
-    else setSystemStatus('Live conversation provider connected', 'ready');
+    if (!accountSyncFailed) {
+      if (!result || result.mode === 'local-demo') setSystemStatus(result?.notice || 'Local demo intelligence · no live AI provider is active', 'demo');
+      else setSystemStatus('Live conversation provider connected', 'ready');
+    }
     addMessage('ai', reply, persona);
     speakText(reply, avatarStage, persona);
   } finally {
@@ -1102,12 +1144,31 @@ function getSupabaseClientConfig() {
   return url && anonKey ? { url, anonKey } : null;
 }
 
+async function loadPublicSupabaseConfiguration() {
+  try {
+    const response = await fetch('/api/config', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Configuration request failed (${response.status}).`);
+    const config = await response.json();
+    appState.supabaseServerConfigured = Boolean(config.supabaseServerConfigured);
+    if (config.supabase?.url && config.supabase?.anonKey) window.MINDMESH_SUPABASE = config.supabase;
+  } catch (error) {
+    appState.supabaseServerConfigured = false;
+  }
+  updateAuthSetupNotice();
+}
+
 function updateAuthSetupNotice() {
   const notice = $('#auth-setup-notice');
   if (!notice) return;
-  const configured = Boolean(getSupabaseClientConfig());
-  notice.hidden = configured;
-  if (configured) notice.innerHTML = '<strong>Supabase client ready</strong><p>Your public client settings are available. Guest mode remains available if you prefer to keep this device local.</p>';
+  const clientConfigured = Boolean(getSupabaseClientConfig());
+  notice.hidden = clientConfigured && appState.supabaseServerConfigured;
+  if (clientConfigured && appState.supabaseServerConfigured) {
+    notice.innerHTML = '<strong>Account storage ready</strong><p>Sign-in, private chat history, and account preferences are connected. Guest mode stays on this device.</p>';
+  } else if (clientConfigured) {
+    notice.innerHTML = '<strong>Finish server setup</strong><p>The public Supabase client is configured, but the Render service still needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.</p>';
+  } else {
+    notice.innerHTML = '<strong>Supabase setup required</strong><p>Add SUPABASE_URL, SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY to the Render service environment. The public key is delivered safely by the app; the service-role key stays server-only.</p>';
+  }
 }
 
 function setAuthMode(mode) {
@@ -1146,6 +1207,7 @@ async function supabaseAuth(mode, email, password, displayName) {
   if (appState.offlineOnly) throw new Error('Offline-only mode is enabled. Turn it off in Settings to connect Supabase.');
   const config = getSupabaseClientConfig();
   if (!config) throw new Error('Supabase setup required: add the public client URL and anon key before signing in.');
+  if (!appState.supabaseServerConfigured) throw new Error('Account storage is not ready yet. Configure SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server first.');
   const endpoint = mode === 'register' ? `${config.url}/auth/v1/signup` : `${config.url}/auth/v1/token?grant_type=password`;
   const body = mode === 'register'
     ? { email, password, data: displayName ? { display_name: displayName } : undefined }
@@ -1157,8 +1219,72 @@ async function supabaseAuth(mode, email, password, displayName) {
   return payload;
 }
 
+function persistAuthSession(session) {
+  appState.authToken = session.access_token;
+  appState.authRefreshToken = session.refresh_token || appState.authRefreshToken;
+  appState.authExpiresAt = Date.now() + (Number(session.expires_in) || 3600) * 1000;
+  storage.set('mindmesh-auth-token', appState.authToken);
+  if (appState.authRefreshToken) storage.set('mindmesh-auth-refresh-token', appState.authRefreshToken);
+  storage.set('mindmesh-auth-expires-at', String(appState.authExpiresAt));
+}
+
+function clearAuthSession() {
+  appState.authToken = null;
+  appState.authRefreshToken = null;
+  appState.authExpiresAt = 0;
+  storage.remove('mindmesh-auth-token');
+  storage.remove('mindmesh-auth-refresh-token');
+  storage.remove('mindmesh-auth-expires-at');
+}
+
+async function refreshAuthSession(force = false) {
+  if (!appState.authToken || !appState.authRefreshToken) return false;
+  if (!force && appState.authExpiresAt > Date.now() + 60000) return true;
+  if (appState.authRefreshPromise) return appState.authRefreshPromise;
+  const config = getSupabaseClientConfig();
+  if (!config) return false;
+  const refreshToken = appState.authRefreshToken;
+  appState.authRefreshPromise = (async () => {
+    const response = await fetch(`${config.url}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      headers: { apikey: config.anonKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    let payload = {};
+    try { payload = await response.json(); } catch (error) { payload = {}; }
+    if (!response.ok || !payload.access_token) {
+      if (response.status === 400 || response.status === 401) clearAuthSession();
+      throw new Error(payload.error_description || payload.msg || payload.message || 'Your sign-in session could not be refreshed. Please sign in again.');
+    }
+    if (appState.authRefreshToken !== refreshToken) return false;
+    persistAuthSession(payload);
+    return true;
+  })();
+  try {
+    return await appState.authRefreshPromise;
+  } finally {
+    appState.authRefreshPromise = null;
+  }
+}
+
 async function loadAuthenticatedUser() {
   if (!appState.authToken) { updateProfileSurface(); return; }
+  if (!appState.supabaseServerConfigured) {
+    appState.authUser = null;
+    switchConversationOwner();
+    updateProfileSurface();
+    setSystemStatus('Account storage is not configured yet · guest progress remains local', 'offline');
+    return;
+  }
+  try { await refreshAuthSession(); } catch (error) {
+    if (!appState.authToken) {
+      appState.authUser = null;
+      switchConversationOwner();
+      updateProfileSurface();
+      setAuthStatus('Your session expired. Sign in again to access account data.', 'error');
+      return;
+    }
+  }
   const result = await apiRequest('/api/auth/me', { method: 'GET' });
   if (result?.user) {
     appState.authUser = result.user;
@@ -1167,6 +1293,8 @@ async function loadAuthenticatedUser() {
     setSystemStatus('Signed in · private profile connected', 'ready');
     loadAuthenticatedPreferences();
     loadAvatarPersonalizations();
+    loadRemoteThought();
+    loadAccountConversationHistory();
     return;
   }
   const config = getSupabaseClientConfig();
@@ -1180,13 +1308,14 @@ async function loadAuthenticatedUser() {
         setSystemStatus('Signed in · Supabase session active', 'ready');
         loadAuthenticatedPreferences();
         loadAvatarPersonalizations();
+        loadRemoteThought();
+        loadAccountConversationHistory();
         return;
       }
     } catch (error) { /* Keep the guest surface available when Supabase is unreachable. */ }
   }
-  appState.authToken = null;
+  clearAuthSession();
   appState.authUser = null;
-  storage.remove('mindmesh-auth-token');
   switchConversationOwner();
   updateProfileSurface();
 }
@@ -1217,14 +1346,16 @@ $('#auth-form').addEventListener('submit', async event => {
       if (appState.authMode === 'register') setAuthMode('signin');
       return;
     }
-    appState.authToken = session.access_token;
+    persistAuthSession(session);
     appState.authUser = session.user || null;
-    storage.set('mindmesh-auth-token', session.access_token);
     switchConversationOwner();
     updateProfileSurface();
     setAuthStatus('You are signed in. Your private room is ready.', 'success');
     setSystemStatus('Signed in · Supabase session active', 'ready');
     loadAvatarPersonalizations();
+    loadAuthenticatedPreferences();
+    loadRemoteThought();
+    loadAccountConversationHistory();
     window.setTimeout(() => closeModal('auth-modal'), 700);
   } catch (error) {
     setAuthStatus(error.message || 'Could not connect. Guest mode is still available.', 'error');
@@ -1235,9 +1366,8 @@ $('#auth-form').addEventListener('submit', async event => {
 });
 
 function signOutToGuest() {
-  appState.authToken = null;
+  clearAuthSession();
   appState.authUser = null;
-  storage.remove('mindmesh-auth-token');
   switchConversationOwner();
   updateProfileSurface();
   setAuthStatus('You are using guest mode. Progress stays on this browser.', 'success');
@@ -1410,6 +1540,6 @@ updateAuthSetupNotice();
 loadRemoteThought();
 loadRemoteAvatars();
 loadHealth();
-loadAuthenticatedUser();
 loadMissions();
 loadAvatarPersonalizations();
+loadPublicSupabaseConfiguration().then(loadAuthenticatedUser);

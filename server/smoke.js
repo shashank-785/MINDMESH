@@ -1,5 +1,6 @@
 'use strict';
 
+const { createSupabaseAdapter } = require('./supabase');
 const baseUrl = process.env.MINDMESH_BASE_URL || 'http://localhost:3000';
 
 async function request(path, options) {
@@ -13,8 +14,44 @@ async function request(path, options) {
 }
 
 async function main() {
+  const clientConfig = await request('/api/config');
+  if (typeof clientConfig.supabaseServerConfigured !== 'boolean') throw new Error('public configuration response shape failed');
+  if (Object.keys(clientConfig).some((key) => !['supabase', 'supabaseServerConfigured'].includes(key))
+      || (clientConfig.supabase && Object.keys(clientConfig.supabase).some((key) => !['url', 'anonKey'].includes(key)))) {
+    throw new Error('server-only configuration leaked through /api/config');
+  }
+
   const health = await request('/api/health');
   if (health.status !== 'ok') throw new Error('health check did not return ok');
+  const conversationAuth = await fetch(`${baseUrl}/api/conversations/rex`);
+  const conversationAuthBody = await conversationAuth.json();
+  if (health.supabaseConfigured ? conversationAuth.status !== 401 : conversationAuth.status !== 503) {
+    throw new Error('conversation restore endpoint did not enforce authentication/configuration');
+  }
+  if (health.supabaseConfigured && conversationAuthBody.code !== 'AUTH_REQUIRED') throw new Error('conversation restore did not explain the missing auth token');
+  if (!health.supabaseConfigured && conversationAuthBody.code !== 'SUPABASE_NOT_CONFIGURED') throw new Error('conversation restore did not explain missing Supabase configuration');
+
+  const requestedUrls = [];
+  const adapter = createSupabaseAdapter({
+    env: { SUPABASE_URL: 'https://example.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'test-server-key' },
+    fetchImplementation: async (url) => {
+      requestedUrls.push(new URL(url));
+      const payload = url.pathname.endsWith('/conversations')
+        ? [{ id: 'conversation-uuid', avatar_id: 'rex' }]
+        : [{ role: 'user', content: 'Hello again', created_at: '2026-01-01T00:00:00.000Z' }];
+      return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => payload };
+    },
+  });
+  const storedConversation = await adapter.getLatestConversation('user-uuid', 'rex');
+  if (storedConversation?.conversation?.id !== 'conversation-uuid' || storedConversation.messages?.length !== 1) {
+    throw new Error('Supabase conversation restore adapter failed');
+  }
+  if (requestedUrls.length !== 2
+      || requestedUrls[0].searchParams.get('user_id') !== 'eq.user-uuid'
+      || requestedUrls[1].searchParams.get('conversation_id') !== 'eq.conversation-uuid') {
+    throw new Error('conversation restore adapter did not scope conversation ownership');
+  }
+
   const avatars = await request('/api/avatars');
   if (!Array.isArray(avatars.avatars) || avatars.avatars.length !== 6 || avatars.avatars.some((avatar) => !avatar.defaultName || !avatar.image)) throw new Error('avatar catalog check failed');
   const personalization = await request('/api/avatar-personalizations?userId=smoke-user');

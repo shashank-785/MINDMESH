@@ -139,6 +139,31 @@ class SupabaseAdapter {
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
   }
 
+  async getLatestConversation(userId, avatarId) {
+    const rows = await this.request('/rest/v1/conversations', {
+      query: {
+        select: 'id,user_id,avatar_id,title,created_at',
+        user_id: `eq.${userId}`,
+        avatar_id: `eq.${avatarId}`,
+        archived_at: 'is.null',
+        order: 'created_at.desc',
+        limit: '1',
+      },
+    });
+    const conversation = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    if (!conversation) return null;
+
+    const messages = await this.request('/rest/v1/messages', {
+      query: {
+        select: 'role,content,created_at',
+        conversation_id: `eq.${conversation.id}`,
+        order: 'created_at.asc',
+        limit: '60',
+      },
+    });
+    return { conversation, messages: Array.isArray(messages) ? messages : [] };
+  }
+
   async createConversation(userId, avatarId, title) {
     const rows = await this.request('/rest/v1/conversations', {
       method: 'POST',

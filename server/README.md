@@ -20,25 +20,27 @@ The reproducible migrations at `../supabase/migrations/001_initial_schema.sql` a
 ### Exact setup
 
 1. Create a Supabase project and leave Supabase Auth enabled. The migration expects the built-in `auth.users` table.
-2. In the Supabase Dashboard, open **SQL Editor**, create a new query, paste the complete contents of `supabase/migrations/001_initial_schema.sql`, and run it. The same file can be applied with `supabase db push` after linking a local Supabase CLI project.
-3. In **Project Settings > API**, copy the project URL and the **service_role** key into a local `server/.env`:
+2. In the Supabase Dashboard, open **SQL Editor** and run both migrations in order: `supabase/migrations/001_initial_schema.sql`, then `supabase/migrations/002_avatar_personalization.sql`. The migrations can also be applied with `supabase db push` after linking a local Supabase CLI project.
+3. In **Project Settings > API**, copy the project URL, the public **anon/publishable** key, and the **service_role** key into a local `server/.env`:
 
    ```dotenv
    SUPABASE_URL=https://your-project-ref.supabase.co
+   SUPABASE_ANON_KEY=your-public-anon-key
    SUPABASE_SERVICE_ROLE_KEY=your-server-only-service-role-key
    ```
 
-   The server loads a local `.env` file when present; a process manager's environment variables still take precedence. For a PowerShell process without a `.env`, export the values before starting Node:
+   The app delivers only `SUPABASE_URL` and `SUPABASE_ANON_KEY` to the browser through `/api/config`. `SUPABASE_SERVICE_ROLE_KEY` is used only by the server. The server loads a local `.env` file when present; a process manager's environment variables still take precedence. For a PowerShell process without a `.env`, export the values before starting Node:
 
    ```powershell
    $env:SUPABASE_URL = 'https://your-project-ref.supabase.co'
+   $env:SUPABASE_ANON_KEY = 'your-public-anon-key'
    $env:SUPABASE_SERVICE_ROLE_KEY = 'your-server-only-service-role-key'
    npm start
    ```
 
    The service-role key bypasses RLS and must stay on the server. Never add it to `mindmesh`, browser JavaScript, a public environment variable, or source control.
-4. Configure at least one real provider in **Authentication > Providers** and create a test user through Supabase Auth. The server does not create fake users or accept a user ID as proof of identity.
-5. Restart the server and confirm `GET /api/health` reports `"supabaseConfigured": true`. That flag only confirms that both environment variables are present and validly shaped; it does not prove that the remote project is reachable.
+4. Enable email/password sign-in in **Authentication > Providers** and set the production URL and allowed redirect URLs in **Authentication > URL Configuration**. The app supports email confirmation; users must verify their address first when confirmation is enabled.
+5. On Render, add `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` under the service's **Environment** settings, then redeploy. Restart locally after editing `.env`. Confirm `/api/config` returns `supabaseServerConfigured: true` and `/api/health` reports `"supabaseConfigured": true`. These flags only confirm configuration presence, not remote connectivity.
 6. Call the authenticated endpoints with a real Supabase access token in an `Authorization: Bearer ...` header:
 
    ```bash
@@ -60,6 +62,7 @@ The server uses Node.js 18+'s built-in `fetch`, so no Supabase SDK dependency is
 
 ## API
 
+- `GET /api/config` — returns browser-safe Supabase URL/anon-key settings and whether server-side account storage is configured.
 - `GET /api/health` — service status and the active mode.
 - `GET /api/avatars` — the six built-in avatar profiles.
 - `GET /api/avatar-personalizations`, `PUT /api/avatar-personalizations` — reads/saves the six user's custom avatar names and voice settings. Supabase mode requires a bearer token; guest mode uses a bounded local JSON fallback and is labeled `local-demo`.
@@ -69,6 +72,7 @@ The server uses Node.js 18+'s built-in `fetch`, so no Supabase SDK dependency is
 - `GET /api/profile` — returns the authenticated user's profile when Supabase is configured.
 - `PUT /api/profile` — updates `username`, `displayName`, `bio`, and/or `avatarUrl` for the authenticated user when Supabase is configured.
 - `GET /api/preferences`, `PUT /api/preferences` — reads or updates the authenticated user's theme and accessibility-related account preferences when Supabase is configured.
+- `GET /api/conversations/:avatarId` — restores the signed-in user's latest private conversation for that avatar.
 - `POST /api/conversations/reply` — accepts `{ avatarId, message, activity, history }` and returns a contextual reply plus language feedback notes.
 - `POST /api/interviews/coach` — accepts `{ role, companyType, scenario, answer }` and returns feedback, score, strengths, improvements, and a next question.
 - `POST /api/thoughts` — accepts `{ userId, text }` for local demo storage, or `{ text }` with an authenticated bearer token when Supabase is configured.
@@ -100,4 +104,4 @@ Without configuration, conversation and interview coaching use deterministic **l
 - The optional provider is not enabled unless both provider variables are present; this starter does not claim external AI or auth is live by default.
 - When Supabase is configured, thought reads and writes require a real bearer token and ignore client-supplied ownership claims. Without Supabase, the routes remain clearly marked `local-demo` and use the bounded JSON fallback.
 - The authenticated Supabase routes return `503` with `code: "SUPABASE_NOT_CONFIGURED"` when either Supabase variable is missing. With configuration present, a missing or invalid access token returns `401`; the server does not silently fall back to local or fake authentication.
-- This repository does not contain Supabase credentials, a client login flow, or a real access token. Those must be supplied through the Supabase project and a future client/auth integration before the authenticated endpoints can be exercised end-to-end.
+- This repository does not contain Supabase credentials or a real access token. The client sign-in/register flow, session refresh, server verification, account-backed chat persistence, and per-avatar conversation restore are implemented; account use becomes available after setting up the Supabase project and environment values above.

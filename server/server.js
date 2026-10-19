@@ -125,6 +125,14 @@ app.use((req, res, next) => {
 
 app.use(express.json({ limit: JSON_LIMIT, strict: true }));
 
+app.get('/api/config', (req, res) => {
+  const clientConfig = readPublicSupabaseConfiguration();
+  res.json({
+    supabase: clientConfig,
+    supabaseServerConfigured: isSupabaseConfigured(),
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
@@ -226,6 +234,23 @@ app.get('/api/preferences', async (req, res, next) => {
     const { adapter, user } = await authenticateSupabaseRequest(req);
     const preferences = await adapter.getPreferences(user.id);
     return res.json({ preferences, userId: user.id, mode: 'supabase' });
+  } catch (error) {
+    return next(normalizeSupabaseRouteError(error));
+  }
+});
+
+app.get('/api/conversations/:avatarId', async (req, res, next) => {
+  try {
+    const { adapter, user } = await authenticateSupabaseRequest(req);
+    const avatarId = canonicalAvatarId(req.params.avatarId);
+    if (!AVATAR_BY_ID.has(avatarId)) throw badRequest('avatarId must identify one of the available avatars.');
+    const result = await adapter.getLatestConversation(user.id, avatarId);
+    return res.json({
+      conversationId: result?.conversation?.id || null,
+      avatarId,
+      history: result?.messages || [],
+      mode: 'supabase',
+    });
   } catch (error) {
     return next(normalizeSupabaseRouteError(error));
   }
@@ -400,6 +425,20 @@ function loadDotEnv(filePath) {
 
 function hasProviderConfig() {
   return Boolean(String(process.env.AI_API_KEY || '').trim() && providerBaseUrl());
+}
+
+function readPublicSupabaseConfiguration() {
+  const url = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const anonKey = String(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || '').trim();
+  if (!url || !anonKey) return null;
+
+  try {
+    const parsed = new URL(url);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return null;
+  } catch (error) {
+    return null;
+  }
+  return { url, anonKey };
 }
 
 function providerBaseUrl() {

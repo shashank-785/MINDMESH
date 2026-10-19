@@ -16,9 +16,10 @@ may take longer. The local JSON demo store is ephemeral on Render; use the
 optional Supabase integration for managed persistence.
 
 AI coaching and Supabase authentication/storage are optional and disabled
-unless configured. Add their server-only values under the service's
-**Environment** settings in Render. Never put private keys in `mindmesh/`,
-commit them to GitHub, or use a `VITE_*`/browser variable:
+unless configured. Add their values under the service's **Environment**
+settings in Render. The Blueprint asks for the required Supabase and AI keys.
+Never put private keys in `mindmesh/`, commit them to GitHub, or use a
+`VITE_*`/browser variable:
 
 - `AI_API_KEY` for general-purpose, context-aware assistant replies. The
   default provider is OpenAI (`gpt-4o-mini`); optionally set `AI_BASE_URL` and
@@ -26,16 +27,20 @@ commit them to GitHub, or use a `VITE_*`/browser variable:
   uses clearly labeled local demo replies; it is not a general AI model.
   Provider usage may incur charges. When enabled, recent chat messages are
   sent to that provider to maintain conversation context.
-- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
+  The app exposes only the public anon key through `/api/config`; the
+  service-role key remains server-only. Apply both SQL migrations in
+  `supabase/migrations/` before enabling accounts.
 
 For Supabase setup, see [server/README.md](server/README.md). Use a Supabase
 service-role key only as a Render secret.
 
 ## Conversations and voice
 
-Each avatar has a separate chat history, saved in the current browser and kept
-separate for each guest or signed-in account. The app sends only the selected
-avatar's recent conversation context to the server. Spoken input uses the
+Each avatar has a separate chat history. Guest history stays in the current
+browser; signed-in history is stored in Supabase and restored when the account
+is used on another device. The app sends only the selected avatar's recent
+conversation context to the server. Spoken input uses the
 browser's speech-recognition service: allow microphone access and use a
 supported browser such as Chrome or Edge. When recognition ends, the transcript
 stays in the message box so it can be reviewed or edited; tap Send to get a
