@@ -1,0 +1,7 @@
+.opencode/
+server/node_modules/
+server/.env
+server/data/
+server/*.log
+*.log
+.DS_Store

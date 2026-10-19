@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#10131d" />
+  <title>MindMesh — A human place to think</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,500;0,600;1,500;1,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="#overview" aria-label="MindMesh home"><span class="brand-mark">m</span><span>mind<span>mesh</span></span></a>
+      <button class="profile-mini" id="profile-trigger" type="button" aria-haspopup="dialog" aria-controls="auth-modal">
+        <div class="profile-avatar">AK</div>
+        <div><strong id="profile-name">Guest Explorer</strong><small id="profile-detail">Guest mode · local progress</small></div>
+        <span class="icon-btn" aria-hidden="true">•••</span>
+      </button>
+      <nav class="nav-list">
+        <p class="eyebrow">Workspace</p>
+        <button class="nav-item active" data-tab="overview"><span>⌂</span> Overview <kbd>01</kbd></button>
+        <button class="nav-item" data-tab="speakspace"><span>◉</span> SpeakSpace <kbd>02</kbd></button>
+        <button class="nav-item" data-tab="interview"><span>▣</span> Interview Lab <kbd>03</kbd></button>
+        <button class="nav-item" data-tab="galaxy"><span>✧</span> Thought Galaxy <kbd>04</kbd></button>
+        <button class="nav-item" data-tab="council"><span>♧</span> AI Council <kbd>05</kbd></button>
+        <p class="eyebrow nav-gap">Personal</p>
+        <button class="nav-item" data-tab="journal"><span>▤</span> Thought Journal <span class="nav-dot"></span></button>
+        <button class="nav-item" data-tab="quests"><span>♙</span> Quests</button>
+      </nav>
+      <div class="sidebar-foot">
+        <div class="streak"><span class="fire">7</span><div><strong>7 day streak</strong><small>Keep the signal alive</small></div></div>
+        <button class="settings" id="settings-trigger" type="button" aria-label="Open settings" aria-haspopup="dialog" aria-controls="settings-modal">⚙</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="topbar">
+        <div class="mobile-brand"><span class="brand-mark">m</span> mind<span>mesh</span></div>
+        <div class="breadcrumb"><span>Workspace</span><b>/</b><strong id="page-label">Overview</strong></div>
+        <div class="top-actions"><button class="round-btn" id="search-trigger" type="button" aria-label="Find a view">⌕</button><button class="round-btn notification" id="notification-trigger" type="button" aria-label="Notifications">♢<i></i></button><button class="round-btn voice-activation-toggle" id="voice-activation-toggle" type="button" aria-label="Enable voice activation" aria-pressed="false">◉</button><button class="round-btn dark-toggle" id="dark-toggle" type="button" aria-label="Enable dark mode" aria-pressed="false">☾</button><button class="top-avatar" id="top-auth-trigger" type="button" aria-label="Open sign in and guest account">AK</button></div>
+      </header>
+
+      <div class="app-status" id="app-status" data-state="loading" role="status" aria-live="polite"><span class="status-indicator"></span><span id="app-status-label">Checking studio connection…</span><button class="status-dismiss" id="status-dismiss" type="button" aria-label="Dismiss status">×</button></div>
+
+      <section class="view active-view" id="overview" data-view="overview">
+        <div class="welcome-row">
+          <div><p class="eyebrow coral">MONDAY, OCTOBER 21, 2024</p><h1>Your mind, <em>in motion.</em></h1><p class="subhead">A calm place to think out loud, connect the dots, and go deeper with someone who gets your rhythm.</p></div>
+          <div class="signal-status"><span class="pulse"></span> MindMesh is ready <small id="sync-status">Checking connection…</small></div>
+        </div>
+
+        <section class="people-panel" aria-labelledby="people-title">
+          <div class="people-panel-heading">
+            <div><p class="eyebrow coral">YOUR HUMAN × AI CIRCLE</p><h2 id="people-title">Choose who meets you here.</h2><p>Six ways to think together. Every person has a point of view, a voice, and a different way of paying attention.</p></div>
+            <label class="auto-match"><input id="auto-match" type="checkbox" checked /><span class="toggle-track"></span><span>Match the activity automatically</span></label>
+          </div>
+          <div class="persona-layout">
+            <div class="avatar-stage" id="avatar-stage" data-state="idle" aria-live="polite">
+              <div class="stage-kicker">IN THE ROOM WITH YOU</div>
+              <div class="stage-glow"></div>
+              <div class="portrait portrait--large portrait--challenger" id="main-portrait" data-persona="challenger" aria-label="Challenger portrait"></div>
+              <div class="stage-gesture" aria-hidden="true"><span></span><span></span><span></span></div>
+              <div class="avatar-status"><span class="avatar-status-dot"></span><strong id="avatar-status-label">REX is ready</strong><small id="avatar-status-detail">Choose a thought, then speak or type</small></div>
+              <div class="state-note"><span class="state-dot"></span><span id="state-label">idle</span></div>
+            </div>
+            <div class="active-persona-card" id="active-persona-card">
+              <div class="active-persona-top"><span class="eyebrow">CURRENT PERSON</span><span class="voice-chip" id="voice-chip">Voice · bright</span></div>
+              <div class="active-persona-main"><div class="portrait portrait--small portrait--challenger" id="active-portrait" data-persona="rex"></div><div><h3 id="active-persona-name">REX</h3><p id="active-persona-role">Challenger</p><p id="active-persona-description">Confident, witty, and kind enough to make the hard question useful.</p></div></div>
+              <div class="persona-meta"><span><b id="active-persona-style">Direct</b><small>conversation style</small></span><span><b id="active-persona-activity">Daily talk</b><small>best for</small></span></div>
+              <button class="text-button" id="speak-persona" type="button">Hear an introduction <span>↗</span></button>
+            </div>
+          </div>
+          <div class="persona-selector" id="persona-selector" role="group" aria-label="Choose a human persona">
+             <button class="persona-option active" data-persona="rex" aria-pressed="true"><span class="portrait portrait--mini portrait--challenger"></span><span><strong>REX · Challenger</strong><small>Confident · witty</small></span><i>1</i></button>
+             <button class="persona-option" data-persona="mia" aria-pressed="false"><span class="portrait portrait--mini portrait--best-friend"></span><span><strong>MIA · Best Friend</strong><small>Warm · casual</small></span><i>2</i></button>
+             <button class="persona-option" data-persona="arden" aria-pressed="false"><span class="portrait portrait--mini portrait--mentor"></span><span><strong>ARDEN · Mentor</strong><small>Mature · formal</small></span><i>3</i></button>
+             <button class="persona-option" data-persona="zoe" aria-pressed="false"><span class="portrait portrait--mini portrait--entertainer"></span><span><strong>ZOE · Entertainer</strong><small>Energetic · playful</small></span><i>4</i></button>
+             <button class="persona-option" data-persona="elian" aria-pressed="false"><span class="portrait portrait--mini portrait--calm"></span><span><strong>ELIAN · Calm Companion</strong><small>Gentle · grounded</small></span><i>5</i></button>
+             <button class="persona-option" data-persona="vera" aria-pressed="false"><span class="portrait portrait--mini portrait--strategist"></span><span><strong>VERA · Strategist</strong><small>Sharp · analytical</small></span><i>6</i></button>
+          </div>
+        </section>
+
+        <div class="dashboard-grid">
+          <section class="card speak-card" id="speakspace">
+            <div class="card-heading"><div><p class="eyebrow">SPEAKSPACE · <span id="conversation-persona-label">MAYA</span></p><h2>Think out loud</h2></div><span class="human-badge">human perspective</span></div>
+            <div class="conversation" id="conversation" aria-live="polite">
+              <div class="message ai"><div class="message-avatar portrait portrait--tiny portrait--challenger"></div><div><span class="message-meta" id="intro-meta">MAYA <time>09:41</time></span><p id="intro-message">Good morning, Alex. What’s taking up space in your mind today?</p></div></div>
+              <div class="message user"><div><span class="message-meta">YOU <time>09:42</time></span><p>I’m trying to make room for a new idea, but I keep circling the same questions.</p></div><div class="user-avatar">AK</div></div>
+              <div class="typing" id="typing" hidden><span></span><span></span><span></span><span id="typing-label">REX is thinking…</span></div>
+            </div>
+            <form class="composer" id="composer"><label class="sr-only" for="message-input">Message your person</label><input id="message-input" autocomplete="off" placeholder="Share what’s on your mind…" /><button type="button" class="mic-btn" id="mic-btn" aria-label="Toggle microphone">voice</button><button class="send-btn" type="submit" aria-label="Send message">↑</button></form>
+            <div class="suggestions"><button type="button">Help me untangle this</button><button type="button">Ask me a question</button><button type="button">Reflect with me</button></div>
+          </section>
+
+          <section class="card thought-card">
+            <div class="card-heading"><div><p class="eyebrow">DAILY THOUGHT</p><h2>What’s alive for you?</h2></div><span class="date-chip">21 <small>OCT</small></span></div>
+            <textarea id="thought-input" maxlength="180" placeholder="A small thought is still a signal…" aria-label="Daily thought"></textarea>
+            <div class="thought-footer"><span id="char-count">0 / 180</span><button class="primary-btn" id="save-thought" type="button">Save thought <span>↗</span></button></div><p class="saved-note" id="saved-note" role="status"></p>
+          </section>
+
+          <section class="card galaxy-card" id="galaxy">
+            <div class="card-heading"><div><p class="eyebrow">THOUGHT GALAXY</p><h2>Your constellation</h2></div><button class="link-btn" data-tab="galaxy" type="button">Explore <span>↗</span></button></div>
+            <div class="galaxy-visual" id="galaxy-visual" aria-label="Interactive visualization of thought nodes"><div class="orbit orbit-a"></div><div class="orbit orbit-b"></div><div class="node node-one" data-node="Curiosity"><span>✦</span><b>Curiosity</b></div><div class="node node-two" data-node="Direction"><span>◈</span><b>Direction</b></div><div class="node node-three" data-node="Energy"><span>✺</span><b>Energy</b></div><div class="node node-core"><span>AK</span><b>you</b></div><div class="spark spark-a"></div><div class="spark spark-b"></div><div class="spark spark-c"></div></div>
+            <div class="galaxy-foot"><span><i class="legend-dot"></i> 24 connected thoughts</span><span>Last mapped 2h ago</span></div>
+          </section>
+
+           <section class="card council-card" id="council">
+             <div class="card-heading"><div><p class="eyebrow">AI COUNCIL · <span id="council-mode">LOCAL DEMO</span></p><h2>Perspectives for you</h2></div><button class="link-btn" data-tab="council" type="button">View council <span>↗</span></button></div>
+            <div class="council-list"><article class="council-person"><div class="portrait portrait--council portrait--entertainer"></div><div><strong>Entertainer</strong><small>Creative lens</small></div><p>“What if the constraint is the invitation?”</p></article><article class="council-person"><div class="portrait portrait--council portrait--strategist"></div><div><strong>Strategist</strong><small>Strategic lens</small></div><p>“Name the smallest next experiment.”</p></article><article class="council-person"><div class="portrait portrait--council portrait--calm"></div><div><strong>Calm Companion</strong><small>Reflective lens</small></div><p>“Notice where your energy gets brighter.”</p></article></div>
+          </section>
+
+           <section class="card stats-card"><p class="eyebrow">YOUR SIGNAL</p><div class="stats-grid"><div><strong>86%</strong><span>clarity</span><div class="progress"><i style="width:86%"></i></div></div><div><strong>18</strong><span>thoughts this week</span><div class="mini-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div><div><strong id="quest-stat-count">04</strong><span>quests in orbit</span><div class="progress"><i class="purple" id="quest-stat-progress" style="width:0%"></i></div></div></div></section>
+        </div>
+      </section>
+
+      <section class="interview-view" id="interview-view" data-view="interview">
+        <div class="interview-hero"><div><p class="eyebrow coral">INTERVIEW LAB · SPEAK WITH CONFIDENCE</p><h1>Practice the room before you enter it.</h1><p>Meet a professional human coach, answer naturally, and get a clear follow-up. This stays separate from your daily talks and private thought journal.</p></div><div class="interview-hero-person"><div class="portrait portrait--hero portrait--mentor" id="interview-hero-portrait"></div><div><span class="eyebrow">YOUR INTERVIEW COACH</span><strong id="interview-coach-name">ARDEN · Mentor</strong><small id="interview-coach-detail">Mature · formal · focused</small></div></div></div>
+        <div class="scenario-grid" role="group" aria-label="Interview scenarios"><button class="scenario-card active" data-scenario="Placement interview"><span>01</span><strong>Placement interview</strong><small>Tell me about yourself</small></button><button class="scenario-card" data-scenario="Group discussion"><span>02</span><strong>Group discussion</strong><small>Build a clear argument</small></button><button class="scenario-card" data-scenario="College introduction"><span>03</span><strong>College introduction</strong><small>Make a memorable first impression</small></button><button class="scenario-card" data-scenario="Presentation pitch"><span>04</span><strong>Presentation pitch</strong><small>Explain your idea in 60 seconds</small></button></div>
+        <form class="interview-setup" id="interview-setup"><label>What are you preparing for?<input id="target-role" placeholder="e.g. frontend developer" autocomplete="organization-title" required /></label><label>Company style<select id="target-company"><option value="software">Product / tech company</option><option value="analyst">Consulting / analyst role</option><option value="marketing">Marketing / communication role</option></select></label><button type="submit">Build my mock interview ↗</button></form>
+        <div class="interview-workspace"><div class="interview-question"><div class="question-top"><span class="eyebrow">QUESTION 01 · PLACEMENT INTERVIEW</span><span class="question-timer" id="question-timer">00:00</span></div><h2 id="interview-prompt">Tell me about yourself and one problem you are excited to solve.</h2><p class="interactive-hint">Tip: use <b>context → action → result</b>. You can speak or type your answer.</p><form class="interview-composer" id="interview-composer"><label class="sr-only" for="interview-input">Your interview answer</label><textarea id="interview-input" rows="4" placeholder="Start with: “I’m someone who…”"></textarea><div class="interview-controls"><button type="button" class="pulse-button" id="interview-mic">Speak answer</button><button class="primary-btn" type="submit">Get ARDEN’s feedback <span>↗</span></button></div></form></div><aside class="interview-side"><div class="avatar-stage interview-avatar" id="interview-avatar" data-state="idle"><div class="stage-kicker">PROFESSIONAL COACH</div><div class="stage-glow"></div><div class="portrait portrait--large portrait--mentor" id="interview-portrait" data-persona="arden"></div><div class="avatar-status"><span class="avatar-status-dot"></span><strong id="interview-avatar-label">ARDEN is ready</strong><small id="interview-avatar-detail">Warm, focused, honest feedback</small></div><div class="state-note"><span class="state-dot"></span><span id="interview-state-label">idle</span></div></div><div class="interview-score"><span>Practice score</span><strong id="interview-score">—</strong><small>One answer at a time.</small></div></aside></div>
+        <div class="interview-feedback" id="interview-feedback"><span>●</span><div><strong>Your coach will reflect here</strong><p>Complete one answer to unlock a focused fluency note.</p></div></div>
+      </section>
+
+       <section class="quests-view" id="quests-view" data-view="quests" hidden>
+         <div class="quests-hero"><div><p class="eyebrow coral">QUESTS · SMALL SIGNALS, REAL MOMENTUM</p><h1>Stay curious on purpose.</h1><p>Choose one useful experiment, complete it when it feels true, and let the pattern build. Your progress works as a guest and syncs when a missions API is available.</p></div><div class="quest-orbit" aria-hidden="true"><span>♙</span><i></i><b></b></div></div>
+         <div class="quests-toolbar"><div><strong id="quest-progress-label">0 of 0 complete</strong><small id="quest-sync-status">Loading your quest board…</small></div><button class="link-btn" id="refresh-quests" type="button">Refresh board <span>↻</span></button></div>
+         <div class="quest-progress" aria-hidden="true"><i id="quest-progress-bar"></i></div>
+         <div class="mission-list" id="mission-list" aria-live="polite"></div>
+         <div class="mission-empty" id="mission-empty" hidden><span>✦</span><strong>Your orbit is quiet for now.</strong><p>Refresh when you are online, or keep a local quest by writing a thought first.</p></div>
+       </section>
+       <footer class="page-footer"><span>MindMesh <b>·</b> a quiet interface for a loud mind</span><span>⌘ K <small>Quick command</small></span></footer>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="auth-modal" hidden>
+    <section class="modal-card auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <button class="modal-close" type="button" data-close-modal="auth-modal" aria-label="Close account dialog">×</button>
+      <div class="modal-kicker"><span class="brand-mark">m</span><span class="eyebrow coral">YOUR PRIVATE ROOM</span></div>
+      <h2 id="auth-title">Come back to your signal.</h2>
+      <p class="modal-intro">Sign in to keep your circle and quest progress with you. Guest mode stays local to this browser.</p>
+      <div class="auth-tabs" role="tablist" aria-label="Account action"><button class="auth-tab active" id="auth-signin-tab" type="button" role="tab" aria-selected="true" data-auth-mode="signin">Sign in</button><button class="auth-tab" id="auth-register-tab" type="button" role="tab" aria-selected="false" data-auth-mode="register">Register</button></div>
+      <form id="auth-form" class="auth-form">
+        <label id="auth-name-field" hidden>Display name<input id="auth-name" name="name" autocomplete="name" placeholder="How should we call you?" /></label>
+        <label>Email<input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required /></label>
+        <label>Password<input id="auth-password" name="password" type="password" minlength="6" autocomplete="current-password" placeholder="At least 6 characters" required /></label>
+        <button class="primary-btn auth-submit" id="auth-submit" type="submit">Sign in <span>↗</span></button>
+      </form>
+      <div class="auth-status" id="auth-status" role="status" aria-live="polite"></div>
+      <div class="setup-callout" id="auth-setup-notice"><strong>Supabase setup required</strong><p>Auth is not configured for this demo. Add a public Supabase URL and anon key to the client, plus the server Supabase environment, before using sign in or registration.</p></div>
+      <button class="guest-button" id="continue-guest" type="button">Continue as guest <span>→</span></button>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="settings-modal" hidden>
+    <section class="modal-card settings-card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <button class="modal-close" type="button" data-close-modal="settings-modal" aria-label="Close settings">×</button>
+       <p class="eyebrow coral">PERSONAL SETTINGS</p><h2 id="settings-title">Make the room work for you.</h2><p class="modal-intro">Guest preferences stay on this device. After Supabase sign-in, theme preference syncs to your private profile.</p>
+      <div class="settings-section"><h3>Appearance</h3><label class="setting-row"><span><strong>Theme</strong><small>Use your system preference on first visit.</small></span><select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></div>
+      <div class="settings-section"><h3>Accessibility</h3><label class="setting-row"><span><strong>Reduce motion</strong><small>Quiet transitions and avatar movement.</small></span><input class="setting-switch" id="reduce-motion" type="checkbox" /></label><label class="setting-row"><span><strong>Larger text</strong><small>Increase reading size across the room.</small></span><input class="setting-switch" id="larger-text" type="checkbox" /></label><label class="setting-row"><span><strong>Higher contrast</strong><small>Strengthen borders and secondary text.</small></span><input class="setting-switch" id="high-contrast" type="checkbox" /></label></div>
+       <div class="settings-section avatar-settings"><h3>Avatar personalization</h3><p class="settings-note">Rename each person and choose how voice activation behaves.</p><div id="avatar-settings-list" class="avatar-settings-list"></div><button class="primary-btn" id="save-avatar-settings" type="button">Save avatar settings <span>↗</span></button><p class="settings-note" id="avatar-settings-status" role="status"></p></div>
+       <div class="settings-section"><h3>Privacy & data</h3><label class="setting-row"><span><strong>Offline-only mode</strong><small>Keep thoughts and quests on this device.</small></span><input class="setting-switch" id="offline-only" type="checkbox" /></label><button class="danger-button" id="clear-local-data" type="button">Clear guest data</button><p class="settings-note" id="settings-note" role="status"></p></div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop onboarding-backdrop" id="avatar-onboarding" hidden>
+    <section class="modal-card onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+      <div class="modal-kicker"><span class="brand-mark">m</span><span class="eyebrow coral">YOUR HUMAN CIRCLE</span></div>
+      <h2 id="onboarding-title">Give your six guides a name.</h2>
+      <p class="modal-intro">These are the human voices that will meet you in different moments. Keep the defaults or make the circle yours.</p>
+      <div id="onboarding-status" class="auth-status" role="status" aria-live="polite"></div>
+      <div id="onboarding-avatars" class="onboarding-avatars"></div>
+      <button class="primary-btn onboarding-save" id="save-onboarding" type="button">Save and continue <span>↗</span></button>
+    </section>
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
