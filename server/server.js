@@ -627,107 +627,110 @@ function badRequest(message) {
 }
 
 function createLocalConversationReply(avatar, input) {
-  const message = input.message.toLowerCase();
-  const previousTurns = input.history.slice(0, -1).filter((turn) => turn.role === 'user').length;
-  const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(message.trim());
-  const isThanks = /\b(thank you|thanks|appreciate it)\b/i.test(message);
-  const isCelebrating = /\b(i did it|i finished|i passed|i got the job|i got accepted|i'm proud|i am proud|it worked|that helped)\b/i.test(message);
-  const isUpset = /\b(anxious|anxiety|afraid|scared|sad|stressed|overwhelmed|lonely|upset|worried|nervous|exhausted|frustrated)\b/i.test(message);
-  const isStuck = /\b(stuck|can't|cannot|don't know|do not know|keep failing|keep making|confused|lost)\b/i.test(message);
-  const isChoosing = /\b(should i|which one|choose between|can't decide|cannot decide|decision)\b/i.test(message);
-  const topic = conversationTopic(message);
+  const message = String(input.message || '').trim();
+  const lower = message.toLowerCase();
+  const previousTurns = Array.isArray(input.history) ? input.history.slice(0, -1).filter((turn) => turn.role === 'user').length : 0;
   const turn = previousTurns % 2;
-  let reply;
+  const topic = conversationTopic(lower);
+  const isGreeting = /^(hi|hello|hey|good morning|good afternoon|good evening)\b/i.test(message);
+  const isThanks = /\b(thank you|thanks|appreciate it)\b/i.test(lower);
+  const isCelebrating = /\b(i did it|i finished|i passed|i got the job|i got accepted|i am proud|i'm proud|it worked|that helped)\b/i.test(lower);
+  const isUpset = /\b(anxious|anxiety|afraid|scared|sad|stressed|overwhelmed|lonely|upset|worried|nervous|exhausted|frustrated)\b/i.test(lower);
+  const isStuck = /\b(stuck|can't|cannot|don't know|do not know|keep failing|keep making|confused|lost|struggling)\b/i.test(lower);
+  const isChoosing = /\b(should i|which one|choose between|can't decide|cannot decide|decision|option)\b/i.test(lower);
+  const category =
+    isGreeting ? 'greeting' :
+    isThanks ? 'gratitude' :
+    isCelebrating ? 'celebration' :
+    isUpset ? 'emotion' :
+    isChoosing ? 'decision' :
+    isStuck ? 'stuck' :
+    /\b(what|why|how|when|where|which)\b/.test(lower) || /\?.*$/.test(message) ? 'question' :
+    topic ? 'topic' :
+    'default';
 
-  if (isGreeting) {
-    const responses = {
-      rex: [`Hey. What do you want to make progress on?`, `Back again. What's the real question today?`],
-      mia: [`Hey, it's good to see you. How are you doing?`, `Hi again. What would feel good to talk about?`],
-      arden: [`Hello. What would you like to work through today?`, `Welcome back. What is on your mind?`],
-      zoe: [`Hey! What are we figuring out today?`, `You're back. What are we getting into?`],
-      elian: [`Hi. Take your time—what's on your mind?`, `Welcome back. We can start wherever you like.`],
-      vera: [`Hello. What would you like to focus on?`, `Welcome back. What should we tackle first?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `Hi. What would you like to talk about?`;
-  } else if (isThanks) {
-    const responses = {
-      rex: [`Good. What's your next move?`, `Anytime. Put the idea to work.`],
-      mia: [`You're welcome. I'm glad it helped. Want to talk through anything else?`, `Anytime. I'm here if you need me.`],
-      arden: [`You're welcome. What would you like to explore next?`, `Glad it was useful. Is there another part you'd like to work through?`],
-      zoe: [`You're welcome! Consider that one small win in the bag.`, `Anytime. What's next on the adventure?`],
-      elian: [`You're welcome. We can pause here if that feels right.`, `Anytime. Take the time you need.`],
-      vera: [`You're welcome. What is the next open question?`, `Glad it helped. We can move to the next decision whenever you're ready.`],
-    };
-    reply = responses[avatar.id]?.[turn] || `You're welcome.`;
-  } else if (isCelebrating) {
-    const responses = {
-      rex: [`That's a win. What did you do that made it happen?`, `You got it done. What's the next challenge?`],
-      mia: [`I'm so happy for you. How are you feeling now?`, `You deserve to enjoy that. What part are you proudest of?`],
-      arden: [`Well done. What did this teach you about how you work best?`, `That's meaningful progress. Which choice or skill helped most?`],
-      zoe: [`Yes! Take a moment for the victory lap. What was the best part?`, `You did the thing! What should we celebrate first?`],
-      elian: [`That sounds like a moment worth taking in. What feels different now?`, `I'm glad you got to this point. Take a breath and enjoy it.`],
-      vera: [`Good result. Which action had the biggest effect?`, `What would you repeat next time to get a similar outcome?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `That sounds like a real win.`;
-  } else if (isUpset) {
-    const responses = {
-      rex: [`I won't pretend that's easy. What's the one part you can influence right now?`, `Let's focus on what you need, not what you think you should feel. What would help in this moment?`],
-      mia: [`I'm sorry it's weighing on you. Want to tell me which part has been hardest?`, `You don't have to carry the whole thing at once. Would it help to talk, or to find one small next step?`],
-      arden: [`It may help to name the main source of the pressure. Which part feels most within reach to work on?`, `Let's separate what happened from what you're worried might happen. Which feels heavier today?`],
-      zoe: [`That sounds like a lot. Let's shrink it down: what is one thing we can make 5% easier?`, `No need to solve the whole maze right now. Which corner should we look at first?`],
-      elian: [`I'm here with you. Take your time—what feels heaviest right now?`, `There is no rush to fix anything. Would you rather be heard, or think through one gentle next step?`],
-      vera: [`Let's sort the pressure into what you can control and what you can't. Which part needs attention first?`, `What is the immediate problem, and what can safely wait until later?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `That sounds like a lot to carry. What part feels heaviest right now?`;
-  } else if (isChoosing) {
-    const responses = {
-      rex: [`What outcome are you actually trying to get? Start there, then cut the options that don't serve it.`, `Let's be direct: which option moves you closer to what you want?`],
-      mia: [`We can think it through together. What matters most to you, separate from what others expect?`, `Which choice feels kinder to the version of you who has to live with it?`],
-      arden: [`Let's clarify your criteria before comparing the options. What would make one choice meaningfully better?`, `Which trade-off are you most willing to accept, and why?`],
-      zoe: [`Let's try a quick thought experiment: if you picked each option for one week, what would you learn?`, `Which choice makes you a little more curious about what comes next?`],
-      elian: [`You don't have to decide this second. What part of the choice feels most important to sit with?`, `Which option gives you a little more room to breathe?`],
-      vera: [`Name your top two criteria, then score each option against them. Which criterion matters most?`, `What is the key constraint, and which option handles it best?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `What matters most to you in the outcome?`;
-  } else if (isStuck) {
-    const responses = {
-      rex: [`Let's stop circling and pick one move. What have you not tried yet?`, `Which part can you act on today, even if the whole problem stays unsolved?`],
-      mia: [`That loop can wear you down. What have you already tried, even if it didn't work?`, `We can take one small piece together. What feels least overwhelming to start with?`],
-      arden: [`Let's identify where the process is getting stuck. What happens right before you lose momentum?`, `What assumption could you test with a small, low-risk step?`],
-      zoe: [`Time for a tiny plot twist: what would happen if you tried the opposite of your usual approach?`, `Could we turn this into a ten-minute experiment instead of a giant task?`],
-      elian: [`Being stuck doesn't mean you're failing. What would feel like a gentle first step?`, `No rush. What part of this feels okay to look at right now?`],
-      vera: [`Let's isolate the bottleneck. What is the smallest action that would reduce uncertainty?`, `What constraint is blocking progress, and which part of it can you change?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `What is the smallest useful next step?`;
-  } else if (/\?\s*$/.test(input.message)) {
-    reply = turn === 0
-      ? `A useful place to start is with what you already know and what still feels uncertain. What have you considered so far?`
-      : `Let's work through it together. Which detail would make the answer clearer?`;
-  } else if (topic) {
-    const responses = {
-      rex: [`Quick reality check on ${topic}: what outcome are you aiming for?`, `Let's make progress on ${topic}. What is one concrete move you can make today?`],
-      mia: [`I'm with you on ${topic}. What would feel most helpful right now?`, `We can work through ${topic} together. Where should we start?`],
-      arden: [`Let's clarify what you know and what is still uncertain about ${topic}. Which piece matters most?`, `What would progress on ${topic} look like in a way you could actually notice?`],
-      zoe: [`Let's turn ${topic} into a small experiment. What could you try once, just to see what happens?`, `What's one interesting angle on ${topic} you haven't explored yet?`],
-      elian: [`No rush with ${topic}. What feels manageable to look at first?`, `We can take ${topic} one piece at a time. Which piece feels okay to start with?`],
-      vera: [`For ${topic}, name the goal, the main constraint, and the next decision. Which is still unclear?`, `What is the next decision about ${topic} that would reduce the most uncertainty?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `What would make this feel more manageable?`;
-  } else {
-    const responses = {
-      rex: [`Let's get to the heart of it. What result are you trying to reach?`, `What is one useful move you can make next?`],
-      mia: [`I'm here with you. What would be most helpful from me right now?`, `We can take this at your pace. Where would you like to start?`],
-      arden: [`Let's clarify the situation before jumping to a solution. What feels most important to understand?`, `What do you know for sure, and what is still an open question?`],
-      zoe: [`Let's find a fresh angle. What is one small thing you could try just to learn more?`, `If this were an experiment, what would you test first?`],
-      elian: [`There is no rush to solve it all. What feels okay to explore first?`, `I'm listening. What would you like to make a little more space for?`],
-      vera: [`Let's define the goal and the biggest constraint. Which one should we tackle first?`, `What is the next decision, and what information would make it easier?`],
-    };
-    reply = responses[avatar.id]?.[turn] || `What would you like to start with?`;
-  }
+  const templates = {
+    greeting: {
+      rex: ['Hey. What do you want to make real progress on today?', 'Back again. What is the real question that keeps showing up?', 'Let’s cut the fluff: what are you trying to solve?', 'You are here for a reason. What is worth dealing with right now?'],
+      mia: ['Hey, I’m glad you came in. What feels heavy, honest, or exciting right now?', 'Hi again. What feels most useful to unpack without any pressure?', 'We can keep it simple: what feels real for you right now?', 'Tell me the part that feels most difficult or most alive.'],
+      arden: ['Hello. What would you like to understand more clearly today?', 'Welcome back. What would a useful next step look like?', 'Let’s start with the goal and the constraint. What matters most?', 'What do you want to get clearer on before you act?'],
+      zoe: ['Hey! What are we turning from messy to interesting?', 'Nice to see you. What is the spark worth exploring?', 'Pick one thought and let’s make it move. What is the angle?', 'What would feel fun, useful, and just a little bold to tackle?'],
+      elian: ['Hi. We can take this gently. What feels important enough to look at?', 'Welcome back. Where do you want to begin, without pressure?', 'You do not have to fix the whole thing at once. What feels manageable?', 'What is the smallest part you feel okay to explore?'],
+      vera: ['Hello. What decision, plan, or pattern do you want to sharpen?', 'Welcome back. What question is worth answering clearly?', 'Let’s be precise: what are you trying to improve or decide?', 'What is the main signal, the key constraint, and the decision at hand?']
+    },
+    gratitude: {
+      rex: ['Good. Let’s turn that into action before the energy fades.', 'Anytime. What is the next move you want to make?', 'Nice. Now put that clarity to work. What is next?'],
+      mia: ['You’re welcome. I’m glad that helped. What feels useful now?', 'Anytime. Want to talk through one more step together?', 'Good. What would make this feel easier to carry forward?'],
+      arden: ['You’re welcome. What would a stronger next move look like?', 'Glad it helped. Is there another angle worth exploring?', 'Anytime. What would you like to improve next?'],
+      zoe: ['You’re welcome. We can keep the momentum going with one fun step.', 'Always. What is the next creative move?', 'Good. What is the next little win we can chase?'],
+      elian: ['You’re welcome. Let’s pause for a breath before the next step.', 'Anytime. We can keep the pressure low and still move forward.', 'Glad it helped. What feels supportive and manageable next?'],
+      vera: ['You’re welcome. What decision is most worth making next?', 'Anytime. Let’s move from reflection to the next useful action.', 'Glad it helped. What is the best next question to answer?']
+    },
+    celebration: {
+      rex: ['That is a real win. What made it possible?', 'Good. Now use that pattern again. What is the next target?', 'You earned that. What do you want to carry forward from it?'],
+      mia: ['That sounds really good. What part feels best to hold onto?', 'You deserve that moment. What helped most?', 'I’m happy for you. What is the next tiny celebration we can build?'],
+      arden: ['That is meaningful progress. What did the process teach you?', 'Well done. Which skill or habit helped most?', 'That is a strong result. What information would you keep for the next challenge?'],
+      zoe: ['Yes! That deserves a small victory lap. What part felt best?', 'That is the kind of result that makes momentum feel real. What is next?', 'You nailed it. What do you want to do with that energy?'],
+      elian: ['That sounds like a moment worth noticing. What feels different now?', 'That is a good sign. What helped you get there?', 'You should feel proud of that. What small win do you want to keep?'],
+      vera: ['That is a useful signal. What pattern or decision created it?', 'That is promising. What should you repeat next time?', 'Strong. What is the most valuable lesson to keep?']
+    },
+    emotion: {
+      rex: ['That sounds heavy. What is the main pressure point?', 'You do not need to carry this alone. What part feels biggest?', 'Let’s shrink it down. What is the single thing that feels most draining?'],
+      mia: ['I hear how much that is weighing on you. What feels hardest to hold right now?', 'That sounds exhausting. What part of it feels most manageable to unpack?', 'You do not have to fix it all tonight. What would help the load feel lighter?'],
+      arden: ['Let’s take that apart carefully. What is the main source of pressure, and what is the effect on you?', 'What feels most important to understand before deciding what to do next?', 'Let’s separate the emotion from the actual issue. What is the problem, and what is the reaction to it?'],
+      zoe: ['That sounds intense. Can we make it smaller for a second and look at one tiny step?', 'Let’s make it lighter. What is the least dramatic version of this problem?', 'A little humor and a smaller frame might help. What is the next tiny move?'],
+      elian: ['You do not have to solve it all tonight. What part feels safe to put down for a moment?', 'Name the feeling without rushing to fix it. What feels heaviest?', 'Pause for a breath. What feels okay to notice without forcing a solution?'],
+      vera: ['Let’s separate the feeling from the facts. What is the actual issue, and what is the reaction to it?', 'What is the smallest lever that could reduce the pressure?', 'We can work from the signal, not the panic. What is the real constraint?']
+    },
+    decision: {
+      rex: ['Let’s be clear: what outcome matters most to you?', 'Pick the option that moves you nearer to what you want, not just what feels safe.', 'What would you be proud to choose, even if the result were imperfect?'],
+      mia: ['Which choice feels kinder to the version of you who has to live with it?', 'What matters most, and what are you trying to protect?', 'Let’s keep it honest: what matters most, and what can you let go of?'],
+      arden: ['Define the criteria first. What makes one option meaningfully better than the other?', 'What trade-off are you willing to accept, and which one is not worth it?', 'Which decision reduces more uncertainty, and which one only feels more comfortable?'],
+      zoe: ['If you picked each option for one week, which would teach you more?', 'Which choice makes you feel more alive, more curious, or more ready?', 'Let’s turn it into a quick experiment: which option gives you the best story to learn from?'],
+      elian: ['What would feel a little more peaceful or honest?', 'Which option makes room for your energy instead of draining it?', 'If you took the pressure off the outcome, which option feels better?'],
+      vera: ['Name the criteria, score the options, and choose the one with the strongest evidence.', 'What is the main constraint? Which option handles it best?', 'Which decision produces the most clarity in the shortest time?']
+    },
+    stuck: {
+      rex: ['Stop circling. What is one move you have not tried yet?', 'Choose the smallest action that would make the problem feel more obvious.', 'Let’s make the next step practical: what can you do in the next ten minutes?'],
+      mia: ['That loop is exhausting. What part of it feels least impossible right now?', 'Let’s shrink it down. What is the easiest piece to act on?', 'We can make this feel lighter. What would a kinder first step look like?'],
+      arden: ['Where is the momentum breaking? What happens right before you stop?', 'What assumption could you test in a small, low-risk way?', 'Let’s identify the bottleneck before we fix the whole system.'],
+      zoe: ['Try the opposite of your usual instinct for a moment. What changes?', 'Let’s turn this into a tiny experiment instead of a giant problem.', 'What is the playful version of the next move?'],
+      elian: ['You are not failing; you are stuck in a loop. What feels gentle enough to start with?', 'What part of this can you hold gently without trying to solve it all?', 'Pause and look for the least heavy next step.'],
+      vera: ['Break it into goal, constraint, and decision. Which is the actual blocker?', 'What would reduce uncertainty the fastest?', 'Let’s isolate the bottleneck and solve that first.']
+    },
+    question: {
+      rex: ['Good question. What do you already know, and what still needs proof?', 'Let’s work from evidence, not instinct. What would make this clearer?', 'This is worth answering, but first: what matters most in the answer?'],
+      mia: ['I like that question. What would feel most honest and helpful to know?', 'Good thinking. What feels like the real answer you need?', 'That is a useful question. What would make the answer feel true?'],
+      arden: ['A strong question usually reveals the real issue. What is your best version of it?', 'Let’s unpack it. Which detail would make the answer less vague?', 'Good. What does a more useful answer require you to know?'],
+      zoe: ['That is a fun question. What angle makes it more interesting?', 'Let’s make it sharper. What would the twist be?', 'Now we are getting somewhere. What would make this answer feel alive?'],
+      elian: ['That is a thoughtful question. What part feels important to hold gently?', 'Good question. What would feel calm and honest to answer?', 'I like that. What would make the response clear without pressure?'],
+      vera: ['This deserves a clear answer. What are the key facts, assumptions, and trade-offs?', 'What would make the answer useful rather than impressive?', 'Let’s frame it properly: what is the question really asking?']
+    },
+    topic: {
+      rex: [`Quick reality check on ${topic}: what outcome are you aiming for?`, `Let’s make progress on ${topic}. What is one concrete move you can make today?`, `You have a real signal here. What is the most useful next step for ${topic}?`],
+      mia: [`I’m with you on ${topic}. What would feel most helpful right now?`, `We can work through ${topic} together. Where should we start?`, `Let’s make ${topic} feel lighter. What part feels most important to unpack?`],
+      arden: [`Let’s clarify what you know and what is still uncertain about ${topic}. Which piece matters most?`, `What would progress on ${topic} look like in a way you could actually notice?`, `Let’s structure this: what is the goal, the constraint, and the missing fact for ${topic}?`],
+      zoe: [`Let’s turn ${topic} into a small experiment. What could you try once, just to see what happens?`, `What is one interesting angle on ${topic} you have not explored yet?`, `This could get more interesting if we changed the frame. What if we tried a different angle on ${topic}?`],
+      elian: [`No rush with ${topic}. What feels manageable to look at first?`, `We can take ${topic} one piece at a time. Which piece feels okay to start with?`, `Let’s keep ${topic} gentle and concrete. What feels the least heavy to explore first?`],
+      vera: [`For ${topic}, name the goal, the main constraint, and the next decision. Which is still unclear?`, `What is the next decision about ${topic} that would reduce the most uncertainty?`, `Let’s get precise: what is the real problem behind the noise around ${topic}?`]
+    },
+    default: {
+      rex: ['Let’s get to the heart of it. What result are you actually trying to create?', 'The useful move is usually smaller than the big feeling. What is the first step?', 'You have a signal here. What is the real problem behind the noise?'],
+      mia: ['I’m with you. What would feel most helpful right now?', 'We can take this at your pace. What part feels most important to talk through?', 'Tell me the part that feels most real, and we can work from there.'],
+      arden: ['Let’s clarify the situation before jumping to a solution. What matters most?', 'What do you know for sure, and what is still uncertain?', 'What would a good next step look like in plain language?'],
+      zoe: ['Let’s find a fresher angle. What could you test this week?', 'What is the interesting version of this problem?', 'We can make this less heavy and more useful. What is one smart move?'],
+      elian: ['No need to solve it all. What feels manageable to look at first?', 'I’m listening. What would make this feel a little lighter?', 'Take your time. What part do you want to give more room to?'],
+      vera: ['Let’s define the goal, the constraint, and the next decision. Which one matters most?', 'What is the smallest useful move that reduces uncertainty?', 'The clearer the problem, the easier the answer. What is the real issue?']
+    }
+  };
+
+  const list = templates[category]?.[avatar.id] || templates[category]?.vera || templates.default.vera;
+  const seeded = `${avatar.id}:${lower}:${turn}:${category}:${previousTurns}`;
+  const reply = list[Math.abs(seeded.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0)) % list.length];
 
   return {
     reply,
-    languageFeedback: createLanguageFeedback(input.message),
+    languageFeedback: createLanguageFeedback(message),
     mode: 'local-demo',
     notice: 'Local demo intelligence is active.',
   };
