@@ -723,7 +723,7 @@ function localReply(text, persona, history) {
 
 function speechErrorMessage(error) {
   const messages = {
-    'not-allowed': 'Allow microphone access for this site in your browser, then try again.',
+    'not-allowed': 'Microphone access is blocked for MindMesh. In Chrome, open the site controls beside the address, set Microphone to Allow, then reload.',
     'service-not-allowed': 'Voice recognition is blocked by the browser. Check microphone and speech permissions.',
     'audio-capture': 'No microphone was found. Connect or enable a microphone and try again.',
     'no-speech': 'I didn’t catch any speech. Check your microphone and try again.',
@@ -822,10 +822,10 @@ $('#mic-btn').addEventListener('click', event => {
     button.setAttribute('aria-label', 'Start voice message');
     $('#message-input').placeholder = 'Share what’s on your mind…';
     const transcript = $('#message-input').value.trim();
-    if (!recognitionFailed && transcript) {
-      setAvatarState(avatarStage, 'thinking', `${activePersona().shortName} is thinking`, 'Sending your voice message');
-      setSystemStatus('Voice captured · getting a response…', 'ready');
-      $('#composer').requestSubmit();
+    if (transcript) {
+      $('#message-input').focus();
+      setSystemStatus('Transcript ready · review it, then tap send for a reply', 'ready');
+      setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'Your words are in the message box');
     } else if (!recognitionFailed) {
       setSystemStatus('No speech was captured. Check your microphone and try again.', 'error');
       setAvatarState(avatarStage, 'idle', `${activePersona().shortName} is ready`, 'No voice was captured');

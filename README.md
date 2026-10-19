@@ -37,9 +37,10 @@ Each avatar has a separate chat history, saved in the current browser and kept
 separate for each guest or signed-in account. The app sends only the selected
 avatar's recent conversation context to the server. Spoken input uses the
 browser's speech-recognition service: allow microphone access and use a
-supported browser such as Chrome or Edge. Stopping a recording sends its
-transcript automatically; the reply is read aloud by the browser when speech
-playback is available. Audio recordings are not uploaded or stored by this app.
+supported browser such as Chrome or Edge. When recognition ends, the transcript
+stays in the message box so it can be reviewed or edited; tap Send to get a
+reply. If microphone access is blocked, allow it in the browser's site settings
+and reload. Audio recordings are not uploaded or stored by this app.
 
 ## Run locally
 
